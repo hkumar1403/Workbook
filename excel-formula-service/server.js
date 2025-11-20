@@ -1,4 +1,4 @@
-const express = require("express");
+express = require("express");
 const cors = require("cors");
 const evaluateFormula = require("./evaluateFormula");
 
@@ -11,8 +11,8 @@ app.use(express.json());
 // MAIN API ENDPOINT
 
 app.post("/evaluate", (req, res) => {
- 
   try {
+    
     const { cellId, rawValue, allCells } = req.body;
     const upperCasedFormula = rawValue.toUpperCase();
     const result = evaluateFormula(upperCasedFormula, allCells);
