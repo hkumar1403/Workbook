@@ -52,6 +52,96 @@ function resolveCellValue(cellId, allCells, cache) {
 }
 
 /**
+ * Extract and replace functions safely (supports nested parentheses).
+ * Calls `callback(fnName, insideString)` and replaces the full function call
+ * (including its parentheses) with the callback's return value.
+ */
+function extractFunctions(formula, callback) {
+  const funcs = [
+    "SUM",
+    "AVERAGE",
+    "MIN",
+    "MAX",
+    "COUNT",
+    "PRODUCT",
+    "IF",
+    "ADD",
+    "MINUS",
+    "DIVIDE",
+    "MULTIPLY",
+    "TOPERCENT",
+    "EXACT",
+    "TODAY",
+    "NOW",
+    "TEXT",
+    "COUNTIF",
+  ];
+  let i = 0;
+
+  while (i < formula.length) {
+    let matched = false;
+
+    for (const fn of funcs) {
+      // match function name followed by '(' at current position (case-insensitive)
+      const slice = formula.slice(i, i + fn.length + 1).toUpperCase();
+      if (slice === fn + "(") {
+        let start = i + fn.length + 1; // position after '('
+        let depth = 1;
+        let pos = start;
+
+        // walk forward until the matching ')' is found (depth reaches 0)
+        while (pos < formula.length && depth > 0) {
+          if (formula[pos] === "(") depth++;
+          else if (formula[pos] === ")") depth--;
+          pos++;
+        }
+
+        // If we didn't find a matching close paren, bail to avoid infinite loop
+        if (depth !== 0) {
+          // malformed formula — just skip this fn occurrence
+          i++;
+          matched = true;
+          break;
+        }
+
+        const inside = formula.slice(start, pos - 1);
+        const full = formula.slice(i, pos); // fn(...)
+
+        // call handler and coerce to string for safe insertion
+        let replacement;
+        try {
+          replacement = callback(fn, inside);
+        } catch (err) {
+          console.error(`Error while handling function ${fn}:`, err);
+          replacement = "0";
+        }
+
+        // ensure replacement is string (expr-eval expects JS-like tokens)
+        // Insert numeric values as raw numbers; strings keep quotes
+        // Correct handling: numbers stay numbers, strings get quotes
+        if (typeof replacement === "number") {
+          replacement = String(replacement);
+        } else {
+          replacement = `"${String(replacement)}"`;
+        }
+
+        // replace the first occurrence of `full` at position i
+        formula = formula.slice(0, i) + replacement + formula.slice(pos);
+
+        // restart scanning from beginning (simple approach avoids edge-cases)
+        i = 0;
+        matched = true;
+        break;
+      }
+    }
+
+    if (!matched) i++;
+  }
+
+  return formula;
+}
+
+/**
  * Evaluate a formula string like "=A1 + SUM(B1:B3) * 2"
  * - rawValue: string starting with "="
  * - allCells: object map { "A1": "10", "B1": "=SUM(...)" ... }
@@ -72,40 +162,34 @@ function evaluateFormula(rawValue, allCells, cache = {}) {
   // We'll replace function calls with numeric strings and top-level cell refs with numbers.
   let formula = rawValue.slice(1);
 
-  // 1) Function dispatch: find function calls like SUM(...), IF(...), COUNT(...).
-  //    We replace each call with the handler's computed numeric/string result.
-  //    Handlers receive the raw text inside parentheses (not uppercased further here, it's already uppercased).
-  formula = formula.replace(
-    /(SUM|AVERAGE|MIN|MAX|COUNT|PRODUCT|IF)\(([^)]*)\)/gi,
-    (match, fn, inside) => {
-      fn = fn.toUpperCase();
-      // Debug log for visibility
-      console.log(`🧩 Function dispatch: ${fn} with args: ${inside}`);
-      if (functionHandlers[fn]) {
-        try {
-          // Handler should return a number (or a string that can be used in the formula)
-          const value = functionHandlers[fn](
-            inside,
-            allCells,
-            cache,
-            resolveCellValue,
-            expandRange
-          );
-          // Ensure we inject text that expr-eval can parse — numbers as strings
-          return String(value === undefined || value === null ? 0 : value);
-        } catch (err) {
-          console.error(`Error in handler ${fn}:`, err);
-          return "0";
-        }
+  // 1) Function dispatch: use extractFunctions to handle nested calls safely
+  formula = extractFunctions(formula, (fn, inside) => {
+    fn = fn.toUpperCase();
+    // Debug log for visibility
+    console.log(`🧩 Function dispatch: ${fn} with args: ${inside}`);
+    if (functionHandlers[fn]) {
+      try {
+        const value = functionHandlers[fn](
+          inside,
+          allCells,
+          cache,
+          resolveCellValue,
+          expandRange
+        );
+        return String(value === undefined || value === null ? 0 : value);
+      } catch (err) {
+        console.error(`Error in handler ${fn}:`, err);
+        return "0";
       }
-      return "0";
     }
-  );
+    return "0";
+  });
 
   // 2) Replace top-level cell references (not inside function arguments)
   //    We only replace occurrences that are not inside function parentheses.
   //    Approach: when we find A1, check whether that position is inside an open "(" without a close ")" before it.
   //    If so, skip replacement (function handlers already handled that region).
+
   formula = formula.replace(/\b([A-Z]+)(\d+)\b/g, (match, col, row, offset) => {
     // Determine if this match lies inside a parentheses that hasn't been closed yet
     // by checking substring before `offset` for unbalanced '('.
@@ -125,16 +209,26 @@ function evaluateFormula(rawValue, allCells, cache = {}) {
     return String(Number(v) || 0);
   });
 
+  // BEFORE evaluating, detect if formula is a pure string
+  if (
+    (formula.startsWith('"') && formula.endsWith('"')) ||
+    (formula.startsWith("'") && formula.endsWith("'"))
+  ) {
+    return formula.slice(1, -1); // return raw text
+  }
+
+  // Detect raw alphabetic strings (like SMALL, HIGH)
+  if (/^[A-Z]+$/i.test(formula)) {
+    return formula; // return as-is
+  }
   // 3) Evaluate the final expression with expr-eval
   const parser = new Parser();
   try {
-    // parser.evaluate expects a JS-like math expression string
-    // After replacements, formula should be a purely numeric math expression.
     return parser.evaluate(formula);
   } catch (err) {
-    // On any parse/eval errors, fail gracefully to 0
+    // If parsing fails, log and return the raw formula (so "HIGH" returns "HIGH")
     console.error("Formula parse/eval error for:", formula, err);
-    return 0;
+    return formula;
   }
 }
 
