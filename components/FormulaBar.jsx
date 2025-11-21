@@ -57,13 +57,21 @@ export default function FormulaBar() {
   }
 
   return (
-    <input
-      type="text"
-      placeholder={selectedCell ? "" : "Select a cell..."}
-      value={localInput}
-      onChange={(e) => setLocalInput(e.target.value)}
-      onKeyDown={handleKeyDown}
-      className="border p-3 w-full text-lg"
-    />
+    <div className="flex items-center w-full border bg-white">
+      {/* fx symbol box */}
+      <div className="w-12 h-full flex items-center justify-center border-r text-green-700 text-xl">
+        ƒx
+      </div>
+
+      {/* actual formula input */}
+      <input
+        type="text"
+        placeholder=""
+        value={localInput}
+        onChange={(e) => setLocalInput(e.target.value)}
+        onKeyDown={handleKeyDown}
+        className="p-3 w-full text-lg outline- text-black"
+      />
+    </div>
   );
 }
