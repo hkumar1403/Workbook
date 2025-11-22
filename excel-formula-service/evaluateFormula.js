@@ -3,7 +3,7 @@ const { Parser } = require("expr-eval");
 const { expandRange } = require("./helpers");
 
 // import centralized formula registry (each function is in /functions/*.js)
-const functionHandlers = require("./functions");
+const fjs = require("formulajs");
 
 /**
  * Resolve a cell's numeric value (handles formulas recursively)
@@ -57,25 +57,8 @@ function resolveCellValue(cellId, allCells, cache) {
  * (including its parentheses) with the callback's return value.
  */
 function extractFunctions(formula, callback) {
-  const funcs = [
-    "SUM",
-    "AVERAGE",
-    "MIN",
-    "MAX",
-    "COUNT",
-    "PRODUCT",
-    "IF",
-    "ADD",
-    "MINUS",
-    "DIVIDE",
-    "MULTIPLY",
-    "TOPERCENT",
-    "EXACT",
-    "TODAY",
-    "NOW",
-    "TEXT",
-    "COUNTIF",
-  ];
+  const funcs = Object.keys(fjs).map((fn) => fn.toUpperCase());
+
   let i = 0;
 
   while (i < formula.length) {
@@ -141,6 +124,51 @@ function extractFunctions(formula, callback) {
   return formula;
 }
 
+function parseArgsForFormulajs(inside, allCells, cache) {
+  // split on commas not inside parentheses
+  let args = [];
+  let current = "";
+  let depth = 0;
+
+  for (let ch of inside) {
+    if (ch === "," && depth === 0) {
+      args.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+      if (ch === "(") depth++;
+      if (ch === ")") depth--;
+    }
+  }
+  if (current.trim()) args.push(current.trim());
+
+  // resolve cell references and ranges
+  return args.map(arg => {
+    // A1:B3 → array of numbers
+    if (/^[A-Z]+\d+:[A-Z]+\d+$/i.test(arg)) {
+      const ids = expandRange(arg);
+      return ids.map(id => resolveCellValue(id, allCells, cache));
+    }
+
+    // single cell
+    if (/^[A-Z]+\d+$/i.test(arg)) {
+      return resolveCellValue(arg.toUpperCase(), allCells, cache);
+    }
+
+    // number literal
+    if (!isNaN(Number(arg))) return Number(arg);
+
+    // quoted string
+    if ((arg.startsWith('"') && arg.endsWith('"')) ||
+        (arg.startsWith("'") && arg.endsWith("'"))) {
+      return arg.slice(1, -1);
+    }
+
+    return arg; // leave unchanged
+  });
+}
+
+
 /**
  * Evaluate a formula string like "=A1 + SUM(B1:B3) * 2"
  * - rawValue: string starting with "="
@@ -167,18 +195,13 @@ function evaluateFormula(rawValue, allCells, cache = {}) {
     fn = fn.toUpperCase();
     // Debug log for visibility
     console.log(`🧩 Function dispatch: ${fn} with args: ${inside}`);
-    if (functionHandlers[fn]) {
+    if (fjs[fn]) {
       try {
-        const value = functionHandlers[fn](
-          inside,
-          allCells,
-          cache,
-          resolveCellValue,
-          expandRange
-        );
-        return String(value === undefined || value === null ? 0 : value);
+        const args = parseArgsForFormulajs(inside, allCells, cache);
+        const value = fjs[fn](...args);
+        return value;
       } catch (err) {
-        console.error(`Error in handler ${fn}:`, err);
+        console.error(`Formulajs error for ${fn}:`, err);
         return "0";
       }
     }

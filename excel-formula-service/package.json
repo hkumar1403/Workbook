@@ -14,6 +14,7 @@
     "@formulajs/formulajs": "^4.5.4",
     "cors": "^2.8.5",
     "expr-eval": "^2.0.2",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "formulajs": "^1.0.8"
   }
 }

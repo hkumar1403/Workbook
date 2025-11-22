@@ -1,20 +1,3 @@
-module.exports = {
-  SUM: require("./sum"),
-  AVERAGE: require("./average"),
-  MIN: require("./min"),
-  MAX: require("./max"),
-  COUNT: require("./count"),
-  PRODUCT: require("./product"),
-  IF: require("./if"),
-  ADD: require("./add"),
-  MINUS: require("./minus"),
-  DIVIDE: require("./divide"),
-  MULTIPLY: require("./multiply"),
-  TOPERCENT: require("./topercent"),
-  EXACT: require("./exact"),
-  TODAY: require("./today"),
-  NOW: require("./now"),
-  TEXT: require("./text"),
-  COUNTIF: require("./countif"),
-  SUMIF: require("./sumif"),
-};
+const fjs = require("formulajs");
+
+module.exports = fjs;
