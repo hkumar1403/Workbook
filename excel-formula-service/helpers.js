@@ -20,13 +20,34 @@ function indexToCol(num) {
 
 // Expand "A1:A3" or "A1:C2" ranges into ["A1","A2","A3"] or bigger list
 function expandRange(range) {
+  if (!range || typeof range !== "string" || !range.includes(":")) {
+    console.error("Invalid range passed to expandRange:", range);
+    return [];
+  }
+
   const [start, end] = range.split(":");
 
-  const col1 = start.match(/[A-Z]+/)[0];
-  const row1 = parseInt(start.match(/\d+/)[0]);
+  if (!start || !end) {
+    console.error("Invalid range boundaries:", range);
+    return [];
+  }
 
-  const col2 = end.match(/[A-Z]+/)[0];
-  const row2 = parseInt(end.match(/\d+/)[0]);
+  const colMatch1 = start.match(/[A-Z]+/i);
+  const rowMatch1 = start.match(/\d+/);
+
+  const colMatch2 = end.match(/[A-Z]+/i);
+  const rowMatch2 = end.match(/\d+/);
+
+  if (!colMatch1 || !rowMatch1 || !colMatch2 || !rowMatch2) {
+    console.error("Malformed range for expandRange:", range);
+    return [];
+  }
+
+  const col1 = colMatch1[0].toUpperCase();
+  const row1 = parseInt(rowMatch1[0]);
+
+  const col2 = colMatch2[0].toUpperCase();
+  const row2 = parseInt(rowMatch2[0]);
 
   const startColIndex = colToIndex(col1);
   const endColIndex = colToIndex(col2);

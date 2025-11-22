@@ -14,7 +14,7 @@ app.post("/evaluate", (req, res) => {
   try {
     
     const { cellId, rawValue, allCells } = req.body;
-    const upperCasedFormula = rawValue.toUpperCase();
+    const upperCasedFormula = rawValue;
     const result = evaluateFormula(upperCasedFormula, allCells);
 
     return res.json({ result });
