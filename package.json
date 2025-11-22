@@ -11,6 +11,7 @@
   "dependencies": {
     "axios": "^1.13.2",
     "classnames": "^2.5.1",
+    "formulajs": "^1.0.8",
     "next": "16.0.3",
     "react": "19.2.0",
     "react-dom": "19.2.0",

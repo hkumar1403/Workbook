@@ -13,7 +13,7 @@ function resolveCellValue(cellId, allCells, cache) {
   }
 
   if (cache[cellId] !== undefined) return cache[cellId];
-
+  cellId = cellId.toUpperCase();
   const raw = allCells[cellId];
 
   if (!raw) {
@@ -95,7 +95,9 @@ function extractFunctions(formula, callback) {
         } else if (typeof replacement === "boolean") {
           replacement = replacement ? "true" : "false";
         } else if (Array.isArray(replacement)) {
-          replacement = `[${replacement.map(v => JSON.stringify(v)).join(",")}]`;
+          replacement = `[${replacement
+            .map((v) => JSON.stringify(v))
+            .join(",")}]`;
         } else {
           replacement = String(replacement);
         }
@@ -138,12 +140,14 @@ function parseArgsForFormulajs(inside, allCells, cache) {
   return args.map((arg) => {
     // Range A1:B5
     if (/^[A-Z]+\d+:[A-Z]+\d+$/i.test(arg)) {
-      return expandRange(arg).map(id => resolveCellValue(id, allCells, cache));
+      return expandRange(arg).map((id) =>
+        resolveCellValue(id, allCells, cache)
+      );
     }
 
     // Single cell A1
     if (/^[A-Z]+\d+$/i.test(arg)) {
-      return resolveCellValue(arg, allCells, cache);
+      return resolveCellValue(arg.toUpperCase(), allCells, cache);
     }
 
     // Number literal
@@ -174,7 +178,10 @@ function evaluateFormula(rawValue, allCells, cache = {}) {
   let formula = rawValue.slice(1);
 
   // 🔥 Normalize function names only (not arguments)
-  formula = formula.replace(/\b([a-zA-Z]+)\s*\(/g, (m, fn) => fn.toUpperCase() + "(");
+  formula = formula.replace(
+    /\b([a-zA-Z]+)\s*\(/g,
+    (m, fn) => fn.toUpperCase() + "("
+  );
 
   // Replace built-in functons
   formula = extractFunctions(formula, (fn, inside) => {
@@ -198,7 +205,7 @@ function evaluateFormula(rawValue, allCells, cache = {}) {
 
     if (open > close) return match; // skip inside functions
 
-    const id = col + row;
+    const id = (col + row).toUpperCase();
     return String(Number(resolveCellValue(id, allCells, cache)) || 0);
   });
 
