@@ -9,22 +9,47 @@ export function GridProvider({ children }) {
   const [selectedCell, setSelectedCell] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Stores RAW values (like "10" or "=A1+5")
+  // Stores the current workbook ID (comes from DB)
+  const [workbookId, setWorkbookId] = useState(null);
+
+  // Stores cell values for the active sheet
   const [cellValues, setCellValues] = useState({});
 
-  // Load saved raw values from cell-service
+  // -----------------------------------------------------
+  // 1️⃣ INIT WORKBOOK (Load existing workbook OR create new)
+  // -----------------------------------------------------
   useEffect(() => {
+    async function initWorkbook() {
+      try {
+        const res = await axios.get("http://localhost:5001/workbook/init");
+
+        // backend returns: { workbookId: "abc123..." }
+        setWorkbookId(res.data.workbookId);
+      } catch (err) {
+        console.error("Error initializing workbook:", err);
+      }
+    }
+
+    initWorkbook();
+  }, []);
+
+  // -----------------------------------------------------
+  // 2️⃣ LOAD CELL DATA WHEN workbookId IS READY
+  // -----------------------------------------------------
+  useEffect(() => {
+    // wait until workbookId is loaded
+    if (!workbookId) return;
+
     async function loadData() {
       try {
-        const res = await axios.get("http://localhost:5001/cells/sheet1");
+        const res = await axios.get(`http://localhost:5001/cells/${workbookId}`);
         const raw = res.data || {};
 
-        // STEP 1: Set raw values first
         let newState = { ...raw };
 
-        // STEP 2: Recalculate formulas for all formula cells
+        // Recompute formulas
         for (let cellId in raw) {
-          if (raw[cellId].startsWith("=")) {
+          if (raw[cellId]?.startsWith("=")) {
             try {
               const formulaRes = await axios.post(
                 "http://localhost:5002/evaluate",
@@ -42,7 +67,6 @@ export function GridProvider({ children }) {
           }
         }
 
-        // STEP 3: Save raw + computed values to React state
         setCellValues(newState);
       } catch (err) {
         console.error("Error loading cell data:", err);
@@ -50,29 +74,39 @@ export function GridProvider({ children }) {
     }
 
     loadData();
-  }, []);
+  }, [workbookId]);
 
-  // Compute display value for a cell
+  // -----------------------------------------------------
+  // 3️⃣ GET DISPLAY VALUE FOR ANY CELL
+  // -----------------------------------------------------
   function getCellDisplayValue(cellId) {
     const raw = cellValues[cellId];
     const computed = cellValues[cellId + "_value"];
 
-    if (computed !== undefined) return computed; // computed value from formula service
-    if (!raw) return ""; // empty cell
-    if (!raw.startsWith("=")) return raw; // normal raw number or text
-    return ""; // raw formula, will compute after Enter
+    if (computed !== undefined) return computed;  // formula result
+    if (!raw) return "";                          // empty cell
+    if (!raw.startsWith("=")) return raw;         // raw text/number
+    return "";                                    // formula still computing
   }
 
+  // -----------------------------------------------------
+  // 4️⃣ PROVIDE VALUES TO THE APP
+  // -----------------------------------------------------
   return (
     <GridContext.Provider
       value={{
         selectedCell,
         setSelectedCell,
+
         cellValues,
         setCellValues,
         getCellDisplayValue,
+
         isSidebarOpen,
         setIsSidebarOpen,
+
+        workbookId,
+        setWorkbookId,
       }}
     >
       {children}

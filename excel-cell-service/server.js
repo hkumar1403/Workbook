@@ -4,7 +4,7 @@ const mongoose = require("mongoose");
 require("dotenv").config();
 
 const cellRoutes = require("./routes/cellRoutes");
-
+const workbookRoutes = require("./routes/workbookRoutes");
 const app = express();
 
 // ✅ Allow frontend requests
@@ -14,7 +14,7 @@ app.use(express.json());
 
 // Routes
 app.use("/cells", cellRoutes);
-
+app.use("/workbook", workbookRoutes);
 // DB connection
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB connected!"))
