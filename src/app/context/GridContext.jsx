@@ -7,6 +7,7 @@ export const GridContext = createContext();
 
 export function GridProvider({ children }) {
   const [selectedCell, setSelectedCell] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Stores RAW values (like "10" or "=A1+5")
   const [cellValues, setCellValues] = useState({});
@@ -70,6 +71,8 @@ export function GridProvider({ children }) {
         cellValues,
         setCellValues,
         getCellDisplayValue,
+        isSidebarOpen,
+        setIsSidebarOpen,
       }}
     >
       {children}
