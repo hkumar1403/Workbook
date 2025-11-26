@@ -7,10 +7,9 @@ import { GridContext } from "@/app/context/GridContext"; // <-- IMPORTANT
 
 export default function SheetTabs({ onSheetChange }) {
   const [sheets, setSheets] = useState([]);   // <--- CHANGED: start empty
-  const [activeSheet, setActiveSheet] = useState(null);
   const scrollRef = useRef(null);
 
-  const { workbookId } = useContext(GridContext); // <--- IMPORTANT: get workbook ID
+  const { workbookId, activeSheet, setActiveSheet } = useContext(GridContext); // <--- IMPORTANT: get workbook ID and activeSheet from context
 
   // ------------------------------------------------------------
   // 1️⃣ LOAD SHEETS FROM BACKEND
@@ -19,13 +18,24 @@ export default function SheetTabs({ onSheetChange }) {
     async function loadSheets() {
       if (!workbookId) return;
 
-      const res = await axios.get(
-        `http://localhost:5001/workbook/${workbookId}/sheets`
-      );
+      try {
+        const res = await axios.get(
+          `http://localhost:5001/workbook/${workbookId}/sheets`
+        );
 
-      setSheets(res.data);
-      setActiveSheet(res.data[0]);            // first sheet active
-      onSheetChange?.(res.data[0]);
+        // Backend returns an array of sheet names: ["Sheet1", "Sheet2", ...]
+        const sheetNames = Array.isArray(res.data) ? res.data : [];
+        
+        setSheets(sheetNames);
+        
+        // Set first sheet as active if available and not already set
+        if (sheetNames.length > 0 && !activeSheet) {
+          setActiveSheet(sheetNames[0]);
+          onSheetChange?.(sheetNames[0]);
+        }
+      } catch (err) {
+        console.error("Error loading sheets:", err);
+      }
     }
 
     loadSheets();

@@ -1,27 +1,166 @@
-const Cell = require("../models/Cell");
+const Workbook = require("../models/Workbook");
 
-exports.saveCell = async (req, res) => {
-  const { sheetId, cellId } = req.params;
-  const { rawValue } = req.body;
+// GET /cells/:workbookId - Get all cells for the workbook's first sheet (or active sheet)
+// Also supports GET /cells/:workbookId?sheet=SheetName
+exports.getWorkbookCells = async (req, res) => {
+  try {
+    const { workbookId } = req.params;
+    const { sheet } = req.query; // Optional sheet query parameter
 
-  let cell = await Cell.findOne({ sheetId, cellId });
+    if (!workbookId) {
+      return res.status(400).json({ error: "workbookId is required" });
+    }
 
-  if (!cell) {
-    cell = new Cell({ sheetId, cellId, rawValue });
-  } else {
-    cell.rawValue = rawValue;
+    const workbook = await Workbook.findById(workbookId);
+
+    if (!workbook) {
+      return res.status(404).json({ error: "Workbook not found" });
+    }
+
+    // Determine which sheet to use
+    let sheetName;
+    if (sheet) {
+      // Use specified sheet if it exists
+      if (workbook.sheets.includes(sheet)) {
+        sheetName = sheet;
+      } else {
+        return res.status(404).json({ error: `Sheet "${sheet}" not found` });
+      }
+    } else {
+      // Default to first sheet
+      sheetName = workbook.sheets && workbook.sheets.length > 0 
+        ? workbook.sheets[0] 
+        : "Sheet1";
+    }
+
+    // Get cells for this sheet
+    const sheetCells = workbook.cells?.get(sheetName);
+
+    // Convert Map to plain object
+    const cellsObject = {};
+    if (sheetCells && sheetCells instanceof Map) {
+      sheetCells.forEach((value, key) => {
+        cellsObject[key] = value;
+      });
+    }
+
+    res.json(cellsObject);
+  } catch (err) {
+    console.error("Error getting workbook cells:", err);
+    res.status(500).json({ error: err.message });
   }
-
-  await cell.save();
-  res.json({ success: true });
 };
 
+// POST /cells/:sheetId/:cellId - Save a cell value
+exports.saveCell = async (req, res) => {
+  try {
+    let { sheetId, cellId } = req.params;
+    const { rawValue } = req.body;
+
+    // Validate required fields
+    if (!cellId) {
+      return res.status(400).json({ error: "cellId is required" });
+    }
+
+    // Handle case where sheetId might be "null", "undefined", or missing
+    // Find or create a workbook and use its first sheet as default
+    if (!sheetId || sheetId === "null" || sheetId === "undefined") {
+      let workbook = await Workbook.findOne({});
+      
+      if (!workbook) {
+        workbook = await Workbook.create({
+          sheets: ["Sheet1"]
+        });
+      }
+      
+      // Use the first sheet from the workbook
+      sheetId = workbook.sheets && workbook.sheets.length > 0 
+        ? workbook.sheets[0] 
+        : "Sheet1";
+    }
+
+    // Find or create workbook that contains this sheet
+    let workbook = await Workbook.findOne({ 
+      sheets: { $in: [sheetId] }
+    });
+
+    if (!workbook) {
+      // If no workbook found with this sheet, find any workbook or create one
+      workbook = await Workbook.findOne({});
+      
+      if (!workbook) {
+        // Create a new workbook with this sheet
+        workbook = await Workbook.create({
+          sheets: [sheetId]
+        });
+      } else {
+        // Add the sheet to existing workbook if it doesn't exist
+        if (!workbook.sheets.includes(sheetId)) {
+          workbook.sheets.push(sheetId);
+        }
+      }
+    }
+
+    // Ensure cells map exists
+    if (!workbook.cells) {
+      workbook.cells = new Map();
+    }
+
+    // Get or create cells map for this sheet
+    let sheetCells = workbook.cells.get(sheetId);
+    if (!sheetCells) {
+      sheetCells = new Map();
+      workbook.cells.set(sheetId, sheetCells);
+    }
+
+    // Update cell value
+    sheetCells.set(cellId, rawValue || "");
+
+    await workbook.save();
+
+    // Return success response
+    return res.status(200).json({ 
+      success: true,
+      sheetId: sheetId,
+      cellId: cellId,
+      rawValue: rawValue || ""
+    });
+  } catch (err) {
+    console.error("Error saving cell:", err);
+    return res.status(500).json({ error: err.message || "Failed to save cell" });
+  }
+};
+
+// GET /cells/:sheetId - Get all cells for a specific sheet
 exports.getSheet = async (req, res) => {
-  const { sheetId } = req.params;
-  const cells = await Cell.find({ sheetId });
+  try {
+    const { sheetId } = req.params;
 
-  const formatted = {};
-  cells.forEach((c) => (formatted[c.cellId] = c.rawValue));
+    if (!sheetId) {
+      return res.status(400).json({ error: "sheetId is required" });
+    }
 
-  res.json(formatted);
+    // Find workbook that contains this sheet
+    const workbook = await Workbook.findOne({ sheets: { $in: [sheetId] } });
+
+    if (!workbook) {
+      return res.status(404).json({ error: "Sheet not found" });
+    }
+
+    // Get cells for this sheet
+    const sheetCells = workbook.cells?.get(sheetId);
+
+    // Convert Map to plain object
+    const cellsObject = {};
+    if (sheetCells && sheetCells instanceof Map) {
+      sheetCells.forEach((value, key) => {
+        cellsObject[key] = value;
+      });
+    }
+
+    res.json(cellsObject);
+  } catch (err) {
+    console.error("Error getting sheet cells:", err);
+    res.status(500).json({ error: err.message });
+  }
 };

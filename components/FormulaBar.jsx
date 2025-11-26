@@ -6,7 +6,7 @@ import { GridContext } from "@/app/context/GridContext";
 import * as fjs from "formulajs";
 
 export default function FormulaBar() {
-  const { selectedCell, cellValues, setCellValues } = useContext(GridContext);
+  const { selectedCell, cellValues, setCellValues,activeSheet,setActiveSheet } = useContext(GridContext);
 
   const [localInput, setLocalInput] = useState("");
   const [suggestions, setSuggestions] = useState([]);
@@ -49,8 +49,16 @@ export default function FormulaBar() {
   async function handleKeyDown(e) {
     if (e.key === "Enter" && selectedCell) {
       const raw = localInput;
+      
+      // Ensure activeSheet is never null - use default if needed
+      const sheetName = activeSheet || "Sheet1";
+      
+      console.log(
+        "DEBUG POST URL = ",
+        `http://localhost:5001/cells/${sheetName}/${selectedCell}`
+      );
 
-      await axios.post(`http://localhost:5001/cells/sheet1/${selectedCell}`, {
+      await axios.post(`http://localhost:5001/cells/${sheetName}/${selectedCell}`, {
         rawValue: raw,
       });
 
