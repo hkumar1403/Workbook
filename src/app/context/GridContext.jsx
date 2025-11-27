@@ -48,7 +48,7 @@ export function GridProvider({ children }) {
 
         // Backend returns an array of sheet names: ["Sheet1", "Sheet2", ...]
         const sheetNames = Array.isArray(res.data) ? res.data : [];
-        
+
         // Set first sheet as active if available and not already set
         if (sheetNames.length > 0 && !activeSheet) {
           setActiveSheet(sheetNames[0]);
@@ -71,7 +71,7 @@ export function GridProvider({ children }) {
     async function loadData() {
       try {
         const res = await axios.get(
-          `http://localhost:5001/cells/${workbookId}`
+          `http://localhost:5001/cells/${activeSheet}`
         );
         const raw = res.data || {};
 
@@ -119,6 +119,27 @@ export function GridProvider({ children }) {
     return ""; // formula still computing
   }
 
+  const renameSheet = async (oldName, newName) => {
+    setSheets((prev) => prev.map((s) => (s === oldName ? newName : s)));
+
+    // OPTIONAL: backend call
+    await axios.put("http://localhost:5001/sheets/rename", {
+      oldName,
+      newName,
+    });
+  };
+
+  const deleteSheet = async (sheetName) => {
+    setSheets((prev) => prev.filter((s) => s !== sheetName));
+
+    if (activeSheet === sheetName) {
+      setActiveSheet(sheets[0] || null);
+    }
+
+    // OPTIONAL: backend call
+    await axios.delete(`http://localhost:5001/sheets/${sheetName}`);
+  };
+
   // -----------------------------------------------------
   // 5️⃣ PROVIDE VALUES TO THE APP
   // -----------------------------------------------------
@@ -134,7 +155,8 @@ export function GridProvider({ children }) {
 
         isSidebarOpen,
         setIsSidebarOpen,
-
+        renameSheet,
+        deleteSheet,
         workbookId,
         setWorkbookId,
         activeSheet,

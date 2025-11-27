@@ -46,5 +46,10 @@ router.get("/init", async (req, res) => {
 // Sheet routes
 router.get("/:id/sheets", getSheets);
 router.post("/:id/sheets", addSheet);
+// POST /workbook/:workbookId/sheets/:sheetName/import
+router.post("/:workbookId/sheets/:sheetName/import", async (req, res) => {
+  // delegate to controller
+  return require("../controllers/sheetController").importSheet(req, res);
+});
 
 module.exports = router;
