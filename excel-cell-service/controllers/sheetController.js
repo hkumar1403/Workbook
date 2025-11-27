@@ -21,7 +21,8 @@ exports.getSheets = async (req, res) => {
 // ADD a sheet to a workbook
 exports.addSheet = async (req, res) => {
   try {
-    const wb = await Workbook.findById(req.params.id);
+    const wb = await Workbook.findById(req.params.workbookId);
+
 
     if (!wb) {
       return res.status(404).json({ error: "Workbook not found" });
@@ -94,5 +95,85 @@ exports.importSheet = async (req, res) => {
   } catch (error) {
     console.error("Import error:", error);
     return res.status(500).json({ error: "Server error while importing CSV" });
+  }
+};
+
+exports.renameSheet = async (req, res) => {
+  try {
+    const { workbookId } = req.params;
+    const { oldName, newName } = req.body;
+
+    if (!oldName || !newName) {
+      return res
+        .status(400)
+        .json({ error: "Old and new sheet names required" });
+    }
+
+    const workbook = await Workbook.findById(workbookId);
+    if (!workbook) return res.status(404).json({ error: "Workbook not found" });
+
+    // Validate sheet exists
+    const index = workbook.sheets.indexOf(oldName);
+    if (index === -1) {
+      return res.status(404).json({ error: "Sheet not found" });
+    }
+
+    // Prevent duplicates
+    if (workbook.sheets.includes(newName)) {
+      return res
+        .status(400)
+        .json({ error: "A sheet with that name already exists" });
+    }
+
+    // Rename in sheets array
+    workbook.sheets[index] = newName;
+
+    // Rename sheet in cells map
+    const sheetMap = workbook.cells.get(oldName);
+    if (sheetMap) {
+      workbook.cells.set(newName, sheetMap);
+      workbook.cells.delete(oldName);
+    }
+
+    workbook.markModified("cells"); // Important for Map updates
+
+    await workbook.save();
+
+    res.json(workbook.sheets);
+  } catch (error) {
+    console.error("Rename error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+exports.deleteSheet = async (req, res) => {
+  try {
+    const { workbookId, sheetName } = req.params;
+
+    const workbook = await Workbook.findById(workbookId);
+    if (!workbook) return res.status(404).json({ error: "Workbook not found" });
+
+    if (!workbook.sheets.includes(sheetName)) {
+      return res.status(404).json({ error: "Sheet not found" });
+    }
+
+    // Prevent deleting the only sheet
+    if (workbook.sheets.length === 1) {
+      return res.status(400).json({ error: "Cannot delete the only sheet" });
+    }
+
+    // Remove sheet from array
+    workbook.sheets = workbook.sheets.filter((s) => s !== sheetName);
+
+    // Remove sheet data
+    workbook.cells.delete(sheetName);
+    workbook.markModified("cells");
+
+    await workbook.save();
+
+    res.json(workbook.sheets);
+  } catch (error) {
+    console.error("Delete error:", error);
+    res.status(500).json({ error: "Server error" });
   }
 };

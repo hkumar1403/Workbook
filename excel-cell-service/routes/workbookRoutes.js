@@ -1,8 +1,15 @@
 const express = require("express");
 const router = express.Router();
 const Workbook = require("../models/Workbook");
-const { getSheets, addSheet } = require("../controllers/sheetController");
+const {
+  getSheets,
+  addSheet,
+  renameSheet,
+  deleteSheet,
+} = require("../controllers/sheetController");
 
+router.put("/:workbookId/sheets/rename", renameSheet);
+router.delete("/:workbookId/sheets/:sheetName", deleteSheet);
 // ✅ FIRST: INIT ROUTE
 router.get("/init", async (req, res) => {
   try {
@@ -11,9 +18,9 @@ router.get("/init", async (req, res) => {
     if (!workbook) {
       // Create new workbook - Mongoose will handle Map initialization
       workbook = await Workbook.create({
-        sheets: ["Sheet1"]
+        sheets: ["Sheet1"],
       });
-      
+
       // Initialize cells map for Sheet1 if not already initialized
       if (!workbook.cells) {
         workbook.cells = new Map();
@@ -45,7 +52,7 @@ router.get("/init", async (req, res) => {
 
 // Sheet routes
 router.get("/:id/sheets", getSheets);
-router.post("/:id/sheets", addSheet);
+router.post("/:workbookId/sheets", addSheet);
 // POST /workbook/:workbookId/sheets/:sheetName/import
 router.post("/:workbookId/sheets/:sheetName/import", async (req, res) => {
   // delegate to controller
