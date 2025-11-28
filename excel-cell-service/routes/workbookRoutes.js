@@ -50,8 +50,30 @@ router.get("/init", async (req, res) => {
       workbook = await Workbook.create({
         name: "Workbook1",
         sheets: ["Sheet1"],
-        cells: { Sheet1: {} },
+        cells: new Map(),
       });
+      // Initialize Sheet1 cells map
+      workbook.cells.set("Sheet1", new Map());
+      workbook.markModified("cells");
+      await workbook.save();
+    } else {
+      // Ensure Sheet1 exists
+      if (!workbook.sheets || workbook.sheets.length === 0) {
+        workbook.sheets = ["Sheet1"];
+      } else if (!workbook.sheets.includes("Sheet1")) {
+        workbook.sheets.unshift("Sheet1");
+      }
+      
+      // Ensure Sheet1 has a cells map
+      if (!workbook.cells) {
+        workbook.cells = new Map();
+      }
+      if (!workbook.cells.has("Sheet1")) {
+        workbook.cells.set("Sheet1", new Map());
+      }
+      
+      workbook.markModified("cells");
+      await workbook.save();
     }
 
     res.json({ workbookId: workbook._id.toString() });

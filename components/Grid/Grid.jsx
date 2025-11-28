@@ -18,7 +18,7 @@ function colToLetter(num) {
 
 export default function Grid() {
   const rows = 1000;
-  const columns = 25;
+  const columns = 26;
   // Default width for all columns
   const [colWidths, setColWidths] = useState(
     Array(columns+1).fill(120) // 120px default width

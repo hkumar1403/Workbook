@@ -17,6 +17,7 @@ export default function SheetTabs({ onSheetChange }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   const scrollRef = useRef(null);
+  const sheetsLoadedRef = useRef(new Map()); // Track loaded state per workbookId
 
   const { workbookId, activeSheet, setActiveSheet } = useContext(GridContext); // <--- IMPORTANT: get workbook ID and activeSheet from context
 
@@ -26,6 +27,9 @@ export default function SheetTabs({ onSheetChange }) {
   useEffect(() => {
     async function loadSheets() {
       if (!workbookId) return;
+      
+      // Check if sheets are already loaded for this workbookId
+      if (sheetsLoadedRef.current.get(workbookId)) return;
 
       try {
         const res = await axios.get(
@@ -36,6 +40,7 @@ export default function SheetTabs({ onSheetChange }) {
         const sheetNames = Array.isArray(res.data) ? res.data : [];
 
         setSheets(sheetNames);
+        sheetsLoadedRef.current.set(workbookId, true);
 
         // Set first sheet as active if available and not already set
         if (sheetNames.length > 0 && !activeSheet) {
@@ -43,12 +48,22 @@ export default function SheetTabs({ onSheetChange }) {
           onSheetChange?.(sheetNames[0]);
         }
       } catch (err) {
-        console.error("Error loading sheets:", err);
+        // If 404, workbook doesn't exist - just return early
+        // GridContext will handle reinitialization
+        if (err.response?.status === 404) {
+          setSheets([]);
+          sheetsLoadedRef.current.delete(workbookId);
+          // Do NOT trigger reinitialization here - let GridContext handle it
+          return;
+        } else {
+          console.error("Error loading sheets:", err);
+        }
       }
     }
 
     loadSheets();
-  }, [workbookId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workbookId]); // Only depend on workbookId - setActiveSheet is stable
 
   // ------------------------------------------------------------
   // 2️⃣ ADD NEW SHEET → SAVE TO BACKEND
@@ -179,7 +194,7 @@ export default function SheetTabs({ onSheetChange }) {
           >
             {renamingSheet === sheet ? (
               <input
-                className="px-2 py-1 w-20 border rounded outline-none text-black"
+                className="bg-white m-0 w-20 border rounded outline-none text-black"
                 value={renameValue}
                 autoFocus
                 onChange={(e) => setRenameValue(e.target.value)}

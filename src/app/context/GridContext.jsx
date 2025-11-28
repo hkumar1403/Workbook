@@ -1,7 +1,7 @@
 "use client";
 
 import axios from "axios";
-import { createContext, useState, useEffect } from "react";
+import { createContext, useState, useEffect, useRef } from "react";
 
 export const GridContext = createContext();
 
@@ -15,18 +15,74 @@ export function GridProvider({ children }) {
   // Stores cell values for the active sheet
   const [cellValues, setCellValues] = useState({});
 
+  // Track if we're currently initializing to prevent infinite loops
+  const isInitializing = useRef(false);
+  const isReinitializingRef = useRef(false); // Guard for reinitialization
+  const sheetsLoaded = useRef(false);
+
   // -----------------------------------------------------
-  // 1️⃣ INIT WORKBOOK - Only called from page.js redirect
-  // GridContext no longer initializes workbook automatically
-  // workbookId should be set from URL params in workbook/[id]/page.jsx
+  // 1️⃣ INITIALIZE WORKBOOK ON FIRST LOAD
+  // Check localStorage, or call /workbook/init if needed
   // -----------------------------------------------------
+  useEffect(() => {
+    // Only run once on mount
+    if (workbookId || isInitializing.current) return;
+
+    async function initializeWorkbook() {
+      if (isInitializing.current) return;
+      isInitializing.current = true;
+
+      try {
+        // Check localStorage first
+        const storedWorkbookId = localStorage.getItem("workbookId");
+        
+        if (storedWorkbookId) {
+          // Verify the workbook exists by trying to load sheets
+          try {
+            const res = await axios.get(
+              `http://localhost:5001/workbook/${storedWorkbookId}/sheets`
+            );
+            // Workbook exists, use it
+            setWorkbookId(storedWorkbookId);
+            isInitializing.current = false;
+            return;
+          } catch (err) {
+            // Workbook doesn't exist (404), clear localStorage and create new one
+            if (err.response?.status === 404) {
+              localStorage.removeItem("workbookId");
+            }
+          }
+        }
+
+        // No valid workbookId, create a new one
+        const res = await axios.get("http://localhost:5001/workbook/init");
+        const newWorkbookId = res.data.workbookId;
+        
+        if (newWorkbookId) {
+          localStorage.setItem("workbookId", newWorkbookId);
+          setWorkbookId(newWorkbookId);
+        }
+      } catch (err) {
+        console.error("Error initializing workbook:", err);
+      } finally {
+        isInitializing.current = false;
+      }
+    }
+
+    initializeWorkbook();
+  }, []); // Only run once on mount
 
   // -----------------------------------------------------
   // 2️⃣ LOAD SHEETS AND SET ACTIVE SHEET WHEN workbookId IS READY
   // -----------------------------------------------------
   useEffect(() => {
+    // Reset sheetsLoaded flag when workbookId changes
+    sheetsLoaded.current = false;
+  }, [workbookId]);
+
+  useEffect(() => {
     // wait until workbookId is loaded
-    if (!workbookId) return;
+    if (!workbookId || sheetsLoaded.current) return;
 
     async function loadSheets() {
       try {
@@ -41,13 +97,46 @@ export function GridProvider({ children }) {
         if (sheetNames.length > 0 && !activeSheet) {
           setActiveSheet(sheetNames[0]);
         }
+        
+        sheetsLoaded.current = true;
       } catch (err) {
-        console.error("Error loading sheets:", err);
+        // If 404, workbook doesn't exist - reinitialize ONCE
+        if (err.response?.status === 404) {
+          // Guard: prevent multiple simultaneous reinitializations
+          if (isReinitializingRef.current) {
+            return;
+          }
+          
+          isReinitializingRef.current = true;
+          console.log("Workbook not found, reinitializing...");
+          
+          // Clear invalid workbookId from localStorage and state
+          localStorage.removeItem("workbookId");
+          setWorkbookId(null);
+          sheetsLoaded.current = false;
+          
+          try {
+            const res = await axios.get("http://localhost:5001/workbook/init");
+            const newWorkbookId = res.data.workbookId;
+            if (newWorkbookId) {
+              localStorage.setItem("workbookId", newWorkbookId);
+              setWorkbookId(newWorkbookId);
+            }
+          } catch (initErr) {
+            console.error("Error reinitializing workbook:", initErr);
+          } finally {
+            // Reset flag after reinitialization completes
+            isReinitializingRef.current = false;
+          }
+        } else {
+          console.error("Error loading sheets:", err);
+        }
       }
     }
 
     loadSheets();
-  }, [workbookId, activeSheet]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workbookId]); // Only depend on workbookId - activeSheet is set inside, not a dependency
 
   // -----------------------------------------------------
   // 3️⃣ LOAD CELL DATA WHEN workbookId AND activeSheet ARE READY
@@ -151,7 +240,13 @@ export function GridProvider({ children }) {
         renameSheet,
         deleteSheet,
         workbookId,
-        setWorkbookId,
+        setWorkbookId: (id) => {
+          if (id) {
+            localStorage.setItem("workbookId", id);
+            sheetsLoaded.current = false; // Reset sheets loaded flag when workbookId changes
+          }
+          setWorkbookId(id);
+        },
         activeSheet,
         setActiveSheet,
       }}

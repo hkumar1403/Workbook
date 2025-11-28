@@ -30,12 +30,15 @@ app.use((err, req, res, next) => {
 // DB connection
 async function startServer() {
   try {
-    if (!process.env.MONGO_URI) {
-      throw new Error("MONGO_URI environment variable is not set");
-    }
+    // Only connect to real MongoDB if not in test mode
+    if (process.env.NODE_ENV !== "test") {
+      if (!process.env.MONGO_URI) {
+        throw new Error("MONGO_URI environment variable is not set");
+      }
 
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log("✅ MongoDB connected!");
+      await mongoose.connect(process.env.MONGO_URI);
+      console.log("✅ MongoDB connected!");
+    }
 
     app.listen(5001, () => {
       console.log("✅ Cell service running on port 5001");
