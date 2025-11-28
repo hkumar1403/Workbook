@@ -120,6 +120,7 @@ function extractFunctions(formula, callback) {
 /**
  * Parse arguments for Formulajs
  */
+
 function parseArgsForFormulajs(inside, allCells, cache) {
   let args = [];
   let current = "";
@@ -161,7 +162,32 @@ function parseArgsForFormulajs(inside, allCells, cache) {
       return arg.slice(1, -1);
     }
 
-    return arg;
+    // Boolean literal TRUE / FALSE
+    if (/^(TRUE|FALSE)$/i.test(arg)) {
+      return arg.toUpperCase() === "TRUE";
+    }
+
+    // Try to evaluate expressions (comparisons, arithmetic, nested expressions)
+    try {
+      // Evaluate using expr-eval, but we must replace cell refs inside 'arg'
+      // e.g. "A1>2" -> replace A1 with its numeric value first
+      const replaced = arg.replace(/\b([A-Z]+)(\d+)\b/gi, (m, col, row) => {
+        const id = (col + row).toUpperCase();
+        // If cell missing, treat as 0
+        const val = Number(resolveCellValue(id, allCells, cache));
+        // If val is a string that is not a number, wrap in quotes
+        if (typeof val === "string") return JSON.stringify(val);
+        return String(val);
+      });
+
+      // Use Parser to evaluate the replaced expression
+      return Parser.evaluate
+        ? Parser.evaluate(replaced)
+        : new Parser().evaluate(replaced);
+    } catch (e) {
+      // If parsing fails, return the raw arg (safe fallback)
+      return arg;
+    }
   });
 }
 
