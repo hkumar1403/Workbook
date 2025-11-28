@@ -3,7 +3,8 @@ const Workbook = require("../models/Workbook");
 // GET all sheets for a workbook
 exports.getSheets = async (req, res) => {
   try {
-    const wb = await Workbook.findById(req.params.id);
+    const workbookId = req.params.workbookId || req.params.id;
+    const wb = await Workbook.findById(workbookId);
 
     if (!wb) {
       return res.status(404).json({ error: "Workbook not found" });

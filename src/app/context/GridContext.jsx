@@ -16,22 +16,10 @@ export function GridProvider({ children }) {
   const [cellValues, setCellValues] = useState({});
 
   // -----------------------------------------------------
-  // 1️⃣ INIT WORKBOOK (Load existing workbook OR create new)
+  // 1️⃣ INIT WORKBOOK - Only called from page.js redirect
+  // GridContext no longer initializes workbook automatically
+  // workbookId should be set from URL params in workbook/[id]/page.jsx
   // -----------------------------------------------------
-  useEffect(() => {
-    async function initWorkbook() {
-      try {
-        const res = await axios.get("http://localhost:5001/workbook/init");
-
-        // backend returns: { workbookId: "abc123..." }
-        setWorkbookId(res.data.workbookId);
-      } catch (err) {
-        console.error("Error initializing workbook:", err);
-      }
-    }
-
-    initWorkbook();
-  }, []);
 
   // -----------------------------------------------------
   // 2️⃣ LOAD SHEETS AND SET ACTIVE SHEET WHEN workbookId IS READY
@@ -70,8 +58,9 @@ export function GridProvider({ children }) {
 
     async function loadData() {
       try {
+        // Use correct API: GET /cells/:workbookId?sheet=SheetName
         const res = await axios.get(
-          `http://localhost:5001/cells/${activeSheet}`
+          `http://localhost:5001/cells/${workbookId}?sheet=${activeSheet}`
         );
         const raw = res.data || {};
 
@@ -120,24 +109,28 @@ export function GridProvider({ children }) {
   }
 
   const renameSheet = async (oldName, newName) => {
-    setSheets((prev) => prev.map((s) => (s === oldName ? newName : s)));
+    if (!workbookId) return;
 
-    // OPTIONAL: backend call
-    await axios.put("http://localhost:5001/sheets/rename", {
-      oldName,
-      newName,
-    });
+    try {
+      await axios.put(
+        `http://localhost:5001/workbook/${workbookId}/sheets/rename`,
+        { oldName, newName }
+      );
+    } catch (err) {
+      console.error("Rename error:", err);
+    }
   };
 
   const deleteSheet = async (sheetName) => {
-    setSheets((prev) => prev.filter((s) => s !== sheetName));
+    if (!workbookId) return;
 
-    if (activeSheet === sheetName) {
-      setActiveSheet(sheets[0] || null);
+    try {
+      await axios.delete(
+        `http://localhost:5001/workbook/${workbookId}/sheets/${sheetName}`
+      );
+    } catch (err) {
+      console.error("Delete error:", err);
     }
-
-    // OPTIONAL: backend call
-    await axios.delete(`http://localhost:5001/sheets/${sheetName}`);
   };
 
   // -----------------------------------------------------

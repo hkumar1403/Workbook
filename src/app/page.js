@@ -1,55 +1,29 @@
 "use client";
 
-import Link from "next/link";
-import FormulaBar from "../../components/FormulaBar";
-import Grid from "../../components/Grid/Grid";
-import Sidebar from "../../components/Grid/Sidebar";
-import SheetTabs from "../../components/Grid/SheetTabs";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import axios from "axios";
-import { useContext, useState } from "react";
-import { GridContext } from "@/app/context/GridContext";
-import { Menu } from "lucide-react";
-import UploadCSV from "../../components/UploadCSV";
 
 export default function Page() {
-  const { sheetId, setCellValues } = useContext(GridContext);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const router = useRouter();
 
-  async function reloadSheet() {
-    const res = await axios.get(`http://localhost:5001/cells/${sheetId}`);
-    setCellValues(res.data);
-  }
+  useEffect(() => {
+    async function redirectToLastWorkbook() {
+      try {
+        const res = await axios.get("http://localhost:5001/workbook/init");
+        const workbookId = res.data.workbookId;
+        if (workbookId) {
+          router.push(`/workbook/${workbookId}`);
+        }
+      } catch (err) {
+        console.error("Error initializing workbook:", err);
+        // If init fails, redirect to dashboard
+        router.push("/dashboard");
+      }
+    }
 
-  return (
-    <div className="w-full min-h-screen bg-white relative">
-      {/* TOP BAR */}
-      {/* TOP BAR */}
-      <div className="flex justify-between items-center p-3 border-b bg-gray-50">
-        <h1 className="text-xl font-serif font-bold text-gray-700">Astrel</h1>
+    redirectToLastWorkbook();
+  }, [router]);
 
-        <div className="flex items-center gap-3">
-          {/* Upload CSV Button */}
-          <UploadCSV />
-
-          {/* Menu Icon */}
-          <button onClick={() => setIsSidebarOpen(true)}>
-            <Menu
-              size={20}
-              className="text-gray-700 cursor-pointer"
-              strokeWidth={1.2}
-            />
-          </button>
-        </div>
-      </div>
-
-      <FormulaBar />
-      <Grid />
-
-      {/* ADD THIS — Sheet Tabs at the bottom */}
-      <SheetTabs />
-
-      {/* Sidebar Modal */}
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
-    </div>
-  );
+  return null;
 }

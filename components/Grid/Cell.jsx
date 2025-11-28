@@ -1,7 +1,8 @@
 "use client";
 
 import { useContext, useEffect, useRef, useState } from "react";
-import { GridContext } from "@/app/context/GridContext"; // adjust path if needed
+import { GridContext } from "@/app/context/GridContext";
+import axios from "axios";
 
 // Convert number → Excel letters
 function colToLetter(num) {
@@ -18,9 +19,11 @@ export default function Cell({ row, col, width }) {
   const {
     selectedCell,
     setSelectedCell,
-    allCells,
-    setCellRawValue,
+    cellValues,
+    setCellValues,
     getCellDisplayValue,
+    workbookId,
+    activeSheet,
   } = useContext(GridContext);
 
   const cellId = `${colToLetter(col)}${row}`;
@@ -41,7 +44,7 @@ export default function Cell({ row, col, width }) {
   // When entering edit mode, populate input with raw value and focus
   useEffect(() => {
     if (isEditing && isSelected) {
-      setInputVal(allCells?.[cellId] ?? "");
+      setInputVal(cellValues?.[cellId] ?? "");
       // focus next tick
       setTimeout(() => inputRef.current?.focus(), 0);
       // place caret at end
@@ -52,7 +55,7 @@ export default function Cell({ row, col, width }) {
         }
       }, 10);
     }
-  }, [isEditing, isSelected, allCells, cellId]);
+  }, [isEditing, isSelected, cellValues, cellId]);
 
   // Start editing on double click
   const handleDoubleClick = () => {
@@ -78,15 +81,35 @@ export default function Cell({ row, col, width }) {
   }, [isSelected, isEditing]);
   */
 
-  const finishEdit = () => {
-    // save raw string into global store
-    setCellRawValue(cellId, inputVal);
+  const finishEdit = async () => {
+    if (!workbookId || !activeSheet) {
+      console.error("Cannot save cell: workbookId or activeSheet is missing");
+      setIsEditing(false);
+      return;
+    }
+
+    // Save to backend
+    try {
+      await axios.post(
+        `http://localhost:5001/cells/${workbookId}/${activeSheet}/${cellId}`,
+        { rawValue: inputVal }
+      );
+    } catch (err) {
+      console.error("Error saving cell:", err);
+    }
+
+    // Update local state
+    setCellValues({
+      ...cellValues,
+      [cellId]: inputVal,
+    });
+
     setIsEditing(false);
   };
 
   const cancelEdit = () => {
     setIsEditing(false);
-    setInputVal(allCells?.[cellId] ?? "");
+    setInputVal(cellValues?.[cellId] ?? "");
   };
 
   const onKeyDown = (e) => {

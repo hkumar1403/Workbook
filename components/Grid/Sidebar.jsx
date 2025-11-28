@@ -70,12 +70,15 @@ export default function Sidebar({ isOpen, onClose }) {
             />
           </Tooltip>
           <Tooltip label="Dashboard">
-            <LayoutDashboard
-              size={22}
-              className="text-gray-700 cursor-pointer"
-              strokeWidth={1.2}
-            />
+            <Link href="/dashboard">
+              <LayoutDashboard
+                size={22}
+                className="text-gray-700 cursor-pointer"
+                strokeWidth={1.2}
+              />
+            </Link>
           </Tooltip>
+
           <Tooltip label="Formulas">
             <Link href="/formulas">
               <Sigma

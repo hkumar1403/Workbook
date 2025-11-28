@@ -8,55 +8,75 @@ const {
   deleteSheet,
 } = require("../controllers/sheetController");
 
-router.put("/:workbookId/sheets/rename", renameSheet);
-router.delete("/:workbookId/sheets/:sheetName", deleteSheet);
-// ✅ FIRST: INIT ROUTE
-router.get("/init", async (req, res) => {
+
+// ------------------ STATIC ROUTES FIRST ------------------ //
+
+// CREATE a new workbook
+router.post("/", async (req, res) => {
   try {
-    let workbook = await Workbook.findOne({});
+    const name = req.body.name || "New Workbook";
 
-    if (!workbook) {
-      // Create new workbook - Mongoose will handle Map initialization
-      workbook = await Workbook.create({
-        sheets: ["Sheet1"],
-      });
+    const workbook = await Workbook.create({
+      name,
+      sheets: ["Sheet1"],
+      cells: { Sheet1: {} },
+    });
 
-      // Initialize cells map for Sheet1 if not already initialized
-      if (!workbook.cells) {
-        workbook.cells = new Map();
-      }
-      if (!workbook.cells.has("Sheet1")) {
-        workbook.cells.set("Sheet1", new Map());
-      }
-      await workbook.save();
-    } else {
-      // Ensure first sheet exists in cells map
-      if (workbook.sheets && workbook.sheets.length > 0) {
-        const firstSheet = workbook.sheets[0];
-        if (!workbook.cells) {
-          workbook.cells = new Map();
-        }
-        if (!workbook.cells.has(firstSheet)) {
-          workbook.cells.set(firstSheet, new Map());
-          await workbook.save();
-        }
-      }
-    }
-
-    res.json({ workbookId: workbook._id.toString() });
+    res.json(workbook);
   } catch (err) {
-    console.error("Workbook init error:", err);
+    console.error("Create workbook error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Sheet routes
-router.get("/:id/sheets", getSheets);
+// GET all workbooks
+router.get("/", async (req, res) => {
+  try {
+    const workbooks = await Workbook.find({});
+    res.json(workbooks);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// INIT workbook - Get or create last workbook
+router.get("/init", async (req, res) => {
+  try {
+    // Find the most recently created workbook
+    let workbook = await Workbook.findOne({}).sort({ createdAt: -1 });
+
+    // If no workbook exists, create one
+    if (!workbook) {
+      workbook = await Workbook.create({
+        name: "Workbook1",
+        sheets: ["Sheet1"],
+        cells: { Sheet1: {} },
+      });
+    }
+
+    res.json({ workbookId: workbook._id.toString() });
+  } catch (err) {
+    console.error("Init workbook error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ------------------ SHEET MODIFICATION ROUTES ------------------ //
+
+router.put("/:workbookId/sheets/rename", renameSheet);
+router.delete("/:workbookId/sheets/:sheetName", deleteSheet);
+
 router.post("/:workbookId/sheets", addSheet);
-// POST /workbook/:workbookId/sheets/:sheetName/import
 router.post("/:workbookId/sheets/:sheetName/import", async (req, res) => {
-  // delegate to controller
   return require("../controllers/sheetController").importSheet(req, res);
 });
+
+
+// ------------------ DYNAMIC ROUTES LAST ------------------ //
+
+// GET sheets for a workbook
+router.get("/:workbookId/sheets", getSheets);
+
 
 module.exports = router;

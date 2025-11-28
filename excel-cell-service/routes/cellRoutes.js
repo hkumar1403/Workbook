@@ -8,9 +8,9 @@ function isValidObjectId(id) {
   return mongoose.Types.ObjectId.isValid(id) && id.length === 24;
 }
 
-// POST /cells/:sheetId/:cellId - Save a cell value
+// POST /cells/:workbookId/:sheetName/:cellId - Save a cell value
 // This route must come FIRST to avoid conflicts with GET /:id
-router.post("/:sheetId/:cellId", saveCell);
+router.post("/:workbookId/:sheetName/:cellId", saveCell);
 
 // GET /cells/:id - Route handler that distinguishes between workbookId and sheetId
 router.get("/:id", async (req, res) => {

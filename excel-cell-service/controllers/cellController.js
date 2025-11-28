@@ -51,54 +51,27 @@ exports.getWorkbookCells = async (req, res) => {
   }
 };
 
-// POST /cells/:sheetId/:cellId - Save a cell value
+// POST /cells/:workbookId/:sheetName/:cellId - Save a cell value
 exports.saveCell = async (req, res) => {
   try {
-    let { sheetId, cellId } = req.params;
+    const { workbookId, sheetName, cellId } = req.params;
     const { rawValue } = req.body;
 
     // Validate required fields
-    if (!cellId) {
-      return res.status(400).json({ error: "cellId is required" });
+    if (!workbookId || !sheetName || !cellId) {
+      return res.status(400).json({ error: "workbookId, sheetName, and cellId are required" });
     }
 
-    // Handle case where sheetId might be "null", "undefined", or missing
-    // Find or create a workbook and use its first sheet as default
-    if (!sheetId || sheetId === "null" || sheetId === "undefined") {
-      let workbook = await Workbook.findOne({});
-      
-      if (!workbook) {
-        workbook = await Workbook.create({
-          sheets: ["Sheet1"]
-        });
-      }
-      
-      // Use the first sheet from the workbook
-      sheetId = workbook.sheets && workbook.sheets.length > 0 
-        ? workbook.sheets[0] 
-        : "Sheet1";
-    }
-
-    // Find or create workbook that contains this sheet
-    let workbook = await Workbook.findOne({ 
-      sheets: { $in: [sheetId] }
-    });
+    // Find workbook by ID
+    let workbook = await Workbook.findById(workbookId);
 
     if (!workbook) {
-      // If no workbook found with this sheet, find any workbook or create one
-      workbook = await Workbook.findOne({});
-      
-      if (!workbook) {
-        // Create a new workbook with this sheet
-        workbook = await Workbook.create({
-          sheets: [sheetId]
-        });
-      } else {
-        // Add the sheet to existing workbook if it doesn't exist
-        if (!workbook.sheets.includes(sheetId)) {
-          workbook.sheets.push(sheetId);
-        }
-      }
+      return res.status(404).json({ error: "Workbook not found" });
+    }
+
+    // Ensure sheet exists in workbook
+    if (!workbook.sheets.includes(sheetName)) {
+      return res.status(404).json({ error: "Sheet not found in workbook" });
     }
 
     // Ensure cells map exists
@@ -107,21 +80,23 @@ exports.saveCell = async (req, res) => {
     }
 
     // Get or create cells map for this sheet
-    let sheetCells = workbook.cells.get(sheetId);
+    let sheetCells = workbook.cells.get(sheetName);
     if (!sheetCells) {
       sheetCells = new Map();
-      workbook.cells.set(sheetId, sheetCells);
+      workbook.cells.set(sheetName, sheetCells);
     }
 
     // Update cell value
     sheetCells.set(cellId, rawValue || "");
 
+    workbook.markModified("cells");
     await workbook.save();
 
     // Return success response
     return res.status(200).json({ 
       success: true,
-      sheetId: sheetId,
+      workbookId: workbookId,
+      sheetName: sheetName,
       cellId: cellId,
       rawValue: rawValue || ""
     });
