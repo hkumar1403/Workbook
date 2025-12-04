@@ -11,6 +11,7 @@ export function GridProvider({ children }) {
   const [activeSheet, setActiveSheet] = useState(null);
   const [workbookId, setWorkbookId] = useState(null);
   const [cellValues, setCellValues] = useState({});
+  const [workbookName, setWorkbookName] = useState("Workbook");
 
   const isInitializing = useRef(false);
   const isReinitializingRef = useRef(false);
@@ -72,7 +73,10 @@ export function GridProvider({ children }) {
             await axios.get(
               `http://localhost:5001/workbook/${storedWorkbookId}/sheets`
             );
-
+            const wbRes = await axios.get(
+              `http://localhost:5001/workbook/${storedWorkbookId}`
+            );
+            setWorkbookName(wbRes.data.name);
             setWorkbookId(storedWorkbookId);
             isInitializing.current = false;
             return;
@@ -206,11 +210,14 @@ export function GridProvider({ children }) {
       for (let cellId in raw) {
         if (raw[cellId]?.startsWith("=")) {
           try {
-            const formulaRes = await axios.post("http://localhost:5002/evaluate", {
-              cellId,
-              rawValue: raw[cellId],
-              allCells: raw,
-            });
+            const formulaRes = await axios.post(
+              "http://localhost:5002/evaluate",
+              {
+                cellId,
+                rawValue: raw[cellId],
+                allCells: raw,
+              }
+            );
             newState[cellId + "_value"] = formulaRes.data.result;
           } catch {
             newState[cellId + "_value"] = "ERR";
@@ -282,6 +289,20 @@ export function GridProvider({ children }) {
     }
   };
 
+  const renameWorkbook = async (newName) => {
+    if (!workbookId) return;
+
+    try {
+      await axios.put(`http://localhost:5001/workbook/${workbookId}/rename`, {
+        name: newName,
+      });
+
+      setWorkbookName(newName);
+    } catch (err) {
+      console.error("Workbook rename error:", err);
+    }
+  };
+
   // -----------------------------------------------------
   // 6️⃣ PROVIDER VALUES
   // expose both the raw setter and the wrapper to keep existing callers working
@@ -305,11 +326,14 @@ export function GridProvider({ children }) {
         workbookId,
 
         // expose both:
-        setWorkbookId,   // the real React setter (keeps backward compatibility)
+        setWorkbookId, // the real React setter (keeps backward compatibility)
         updateWorkbookId, // the wrapper that also syncs localStorage
 
         activeSheet,
         setActiveSheet,
+        workbookName,
+        setWorkbookName,
+        renameWorkbook,
       }}
     >
       {children}

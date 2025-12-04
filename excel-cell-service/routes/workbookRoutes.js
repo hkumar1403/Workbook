@@ -127,5 +127,37 @@ router.post("/:workbookId/sheets/:sheetName/columns", addColumn);
 // GET sheets for a workbook
 router.get("/:workbookId/sheets", getSheets);
 
+// RENAME a workbook
+router.put("/:workbookId/rename", async (req, res) => {
+  try {
+    const { workbookId } = req.params;
+    const { name } = req.body;
+
+    if (!name || name.trim() === "") {
+      return res.status(400).json({ error: "Workbook name required" });
+    }
+
+    const workbook = await Workbook.findById(workbookId);
+    if (!workbook) return res.status(404).json({ error: "Workbook not found" });
+
+    workbook.name = name;
+    await workbook.save();
+
+    res.json({ success: true, name });
+  } catch (err) {
+    console.error("Rename workbook error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+router.get("/:workbookId", async (req, res) => {
+  try {
+    const wb = await Workbook.findById(req.params.workbookId);
+    if (!wb) return res.status(404).json({ error: "Workbook not found" });
+    res.json(wb);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 module.exports = router;

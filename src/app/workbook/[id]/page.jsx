@@ -9,7 +9,7 @@ import SheetTabs from "../../../../components/Grid/SheetTabs";
 import { GridContext } from "@/app/context/GridContext";
 import { Menu } from "lucide-react";
 import UploadCSV from "../../../../components/UploadCSV";
-
+import WorkbookTitle from "../../../../components/WorkbookTitle";
 export default function WorkbookPage() {
   const { id } = useParams();
   const { setWorkbookId } = useContext(GridContext);
@@ -28,6 +28,7 @@ export default function WorkbookPage() {
         <h1 className="text-xl font-serif font-bold text-gray-700">Astrel</h1>
 
         <div className="flex items-center gap-3">
+          <WorkbookTitle />
           {/* Upload CSV Button */}
           <UploadCSV />
 
