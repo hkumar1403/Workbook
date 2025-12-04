@@ -1,7 +1,7 @@
 "use client";
 
 import axios from "axios";
-import { createContext, useState, useEffect, useRef } from "react";
+import { createContext, useState, useEffect, useRef, useCallback } from "react";
 
 export const GridContext = createContext();
 
@@ -9,23 +9,51 @@ export function GridProvider({ children }) {
   const [selectedCell, setSelectedCell] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeSheet, setActiveSheet] = useState(null);
-  // Stores the current workbook ID (comes from DB)
   const [workbookId, setWorkbookId] = useState(null);
-
-  // Stores cell values for the active sheet
   const [cellValues, setCellValues] = useState({});
 
-  // Track if we're currently initializing to prevent infinite loops
   const isInitializing = useRef(false);
-  const isReinitializingRef = useRef(false); // Guard for reinitialization
+  const isReinitializingRef = useRef(false);
   const sheetsLoaded = useRef(false);
+
+  // Helper: update workbookId in state + localStorage
+  const updateWorkbookId = (id) => {
+    if (id) {
+      try {
+        localStorage.setItem("workbookId", id);
+      } catch {
+        /* ignore localStorage errors */
+      }
+    } else {
+      try {
+        localStorage.removeItem("workbookId");
+      } catch {
+        /* ignore */
+      }
+    }
+
+    sheetsLoaded.current = false;
+    setWorkbookId(id);
+  };
+
+  const hardResetWorkbookState = () => {
+    try {
+      localStorage.removeItem("workbookId");
+    } catch {}
+    setWorkbookId(null);
+    setActiveSheet(null);
+    setCellValues({});
+    sheetsLoaded.current = false;
+  };
+
+  useEffect(() => {
+    console.log("📌 WORKBOOK ID CHANGED:", workbookId);
+  }, [workbookId]);
 
   // -----------------------------------------------------
   // 1️⃣ INITIALIZE WORKBOOK ON FIRST LOAD
-  // Check localStorage, or call /workbook/init if needed
   // -----------------------------------------------------
   useEffect(() => {
-    // Only run once on mount
     if (workbookId || isInitializing.current) return;
 
     async function initializeWorkbook() {
@@ -33,34 +61,59 @@ export function GridProvider({ children }) {
       isInitializing.current = true;
 
       try {
-        // Check localStorage first
-        const storedWorkbookId = localStorage.getItem("workbookId");
-        
+        const storedWorkbookId =
+          typeof window !== "undefined"
+            ? localStorage.getItem("workbookId")
+            : null;
+
         if (storedWorkbookId) {
-          // Verify the workbook exists by trying to load sheets
           try {
-            const res = await axios.get(
+            // Validate stored ID
+            await axios.get(
               `http://localhost:5001/workbook/${storedWorkbookId}/sheets`
             );
-            // Workbook exists, use it
+
             setWorkbookId(storedWorkbookId);
             isInitializing.current = false;
             return;
           } catch (err) {
-            // Workbook doesn't exist (404), clear localStorage and create new one
-            if (err.response?.status === 404) {
+            console.warn(
+              "❌ Invalid or dead workbookId detected:",
+              storedWorkbookId
+            );
+
+            try {
               localStorage.removeItem("workbookId");
-            }
+            } catch {}
+
+            setWorkbookId(null);
+            setActiveSheet(null);
+            sheetsLoaded.current = false;
+
+            // fetch a fresh workbook
+            const res = await axios.get("http://localhost:5001/workbook/init");
+            const newId = res.data.workbookId;
+            console.log("✅ New workbookId from backend:", newId);
+            try {
+              localStorage.setItem("workbookId", newId);
+            } catch {}
+            setWorkbookId(newId);
+            isInitializing.current = false;
+            return;
           }
         }
 
-        // No valid workbookId, create a new one
+        // No stored id: create/init
         const res = await axios.get("http://localhost:5001/workbook/init");
         const newWorkbookId = res.data.workbookId;
-        
+
         if (newWorkbookId) {
-          localStorage.setItem("workbookId", newWorkbookId);
+          try {
+            localStorage.setItem("workbookId", newWorkbookId);
+          } catch {}
           setWorkbookId(newWorkbookId);
+        } else {
+          setWorkbookId(null);
         }
       } catch (err) {
         console.error("Error initializing workbook:", err);
@@ -70,62 +123,56 @@ export function GridProvider({ children }) {
     }
 
     initializeWorkbook();
-  }, []); // Only run once on mount
+  }, []);
 
   // -----------------------------------------------------
-  // 2️⃣ LOAD SHEETS AND SET ACTIVE SHEET WHEN workbookId IS READY
+  // 2️⃣ LOAD SHEETS WHEN workbookId CHANGES
   // -----------------------------------------------------
   useEffect(() => {
-    // Reset sheetsLoaded flag when workbookId changes
     sheetsLoaded.current = false;
   }, [workbookId]);
 
   useEffect(() => {
-    // wait until workbookId is loaded
     if (!workbookId || sheetsLoaded.current) return;
 
     async function loadSheets() {
+      console.log("loadSheets", workbookId);
       try {
         const res = await axios.get(
           `http://localhost:5001/workbook/${workbookId}/sheets`
         );
 
-        // Backend returns an array of sheet names: ["Sheet1", "Sheet2", ...]
         const sheetNames = Array.isArray(res.data) ? res.data : [];
 
-        // Set first sheet as active if available and not already set
         if (sheetNames.length > 0 && !activeSheet) {
-          setActiveSheet(sheetNames[0]);
+          const first = sheetNames[0];
+          setActiveSheet(typeof first === "string" ? first : first.name);
         }
-        
+
         sheetsLoaded.current = true;
       } catch (err) {
-        // If 404, workbook doesn't exist - reinitialize ONCE
         if (err.response?.status === 404) {
-          // Guard: prevent multiple simultaneous reinitializations
-          if (isReinitializingRef.current) {
-            return;
-          }
-          
+          if (isReinitializingRef.current) return;
+
           isReinitializingRef.current = true;
-          console.log("Workbook not found, reinitializing...");
-          
-          // Clear invalid workbookId from localStorage and state
-          localStorage.removeItem("workbookId");
-          setWorkbookId(null);
-          sheetsLoaded.current = false;
-          
+
+          hardResetWorkbookState();
+
           try {
             const res = await axios.get("http://localhost:5001/workbook/init");
             const newWorkbookId = res.data.workbookId;
+
             if (newWorkbookId) {
-              localStorage.setItem("workbookId", newWorkbookId);
+              try {
+                localStorage.setItem("workbookId", newWorkbookId);
+              } catch {}
               setWorkbookId(newWorkbookId);
+            } else {
+              setWorkbookId(null);
             }
           } catch (initErr) {
             console.error("Error reinitializing workbook:", initErr);
           } finally {
-            // Reset flag after reinitialization completes
             isReinitializingRef.current = false;
           }
         } else {
@@ -135,57 +182,70 @@ export function GridProvider({ children }) {
     }
 
     loadSheets();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workbookId]); // Only depend on workbookId - activeSheet is set inside, not a dependency
+  }, [workbookId]);
 
   // -----------------------------------------------------
-  // 3️⃣ LOAD CELL DATA WHEN workbookId AND activeSheet ARE READY
+  // 3️⃣ LOAD CELL DATA (and evaluate formulas)
+  // make loadData a stable callback so we can call it from listeners
   // -----------------------------------------------------
-  useEffect(() => {
-    // wait until workbookId and activeSheet are loaded
+  const loadData = useCallback(async () => {
     if (!workbookId || !activeSheet) return;
 
-    async function loadData() {
-      try {
-        // Use correct API: GET /cells/:workbookId?sheet=SheetName
-        const res = await axios.get(
-          `http://localhost:5001/cells/${workbookId}?sheet=${activeSheet}`
-        );
-        const raw = res.data || {};
+    console.log("loadData", workbookId, activeSheet);
+    try {
+      const res = await axios.get(
+        `http://localhost:5001/cells/${workbookId}?sheet=${encodeURIComponent(
+          activeSheet
+        )}`
+      );
+      const raw = res.data || {};
 
-        let newState = { ...raw };
+      let newState = { ...raw };
 
-        // Recompute formulas
-        for (let cellId in raw) {
-          if (raw[cellId]?.startsWith("=")) {
-            try {
-              const formulaRes = await axios.post(
-                "http://localhost:5002/evaluate",
-                {
-                  cellId,
-                  rawValue: raw[cellId],
-                  allCells: raw,
-                }
-              );
-
-              newState[cellId + "_value"] = formulaRes.data.result;
-            } catch {
-              newState[cellId + "_value"] = "ERR";
-            }
+      // Recompute formulas by calling formula service
+      for (let cellId in raw) {
+        if (raw[cellId]?.startsWith("=")) {
+          try {
+            const formulaRes = await axios.post("http://localhost:5002/evaluate", {
+              cellId,
+              rawValue: raw[cellId],
+              allCells: raw,
+            });
+            newState[cellId + "_value"] = formulaRes.data.result;
+          } catch {
+            newState[cellId + "_value"] = "ERR";
           }
         }
-
-        setCellValues(newState);
-      } catch (err) {
-        console.error("Error loading cell data:", err);
       }
-    }
 
-    loadData();
+      setCellValues(newState);
+    } catch (err) {
+      console.error("Error loading cell data:", err);
+    }
   }, [workbookId, activeSheet]);
 
+  // invoke loadData whenever workbookId or activeSheet changes
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
   // -----------------------------------------------------
-  // 4️⃣ GET DISPLAY VALUE FOR ANY CELL
+  // 4️⃣ allow external triggers (cells) to request reload
+  // by listening to a custom window event "cell-updated"
+  // (Cells should dispatch window.dispatchEvent(new Event("cell-updated")))
+  // -----------------------------------------------------
+  useEffect(() => {
+    function refreshAllCells() {
+      // call latest loadData
+      loadData();
+    }
+
+    window.addEventListener("cell-updated", refreshAllCells);
+    return () => window.removeEventListener("cell-updated", refreshAllCells);
+  }, [loadData]);
+
+  // -----------------------------------------------------
+  // 5️⃣ Helpers exposed to components
   // -----------------------------------------------------
   function getCellDisplayValue(cellId) {
     const raw = cellValues[cellId];
@@ -223,7 +283,8 @@ export function GridProvider({ children }) {
   };
 
   // -----------------------------------------------------
-  // 5️⃣ PROVIDE VALUES TO THE APP
+  // 6️⃣ PROVIDER VALUES
+  // expose both the raw setter and the wrapper to keep existing callers working
   // -----------------------------------------------------
   return (
     <GridContext.Provider
@@ -237,16 +298,16 @@ export function GridProvider({ children }) {
 
         isSidebarOpen,
         setIsSidebarOpen,
+
         renameSheet,
         deleteSheet,
+
         workbookId,
-        setWorkbookId: (id) => {
-          if (id) {
-            localStorage.setItem("workbookId", id);
-            sheetsLoaded.current = false; // Reset sheets loaded flag when workbookId changes
-          }
-          setWorkbookId(id);
-        },
+
+        // expose both:
+        setWorkbookId,   // the real React setter (keeps backward compatibility)
+        updateWorkbookId, // the wrapper that also syncs localStorage
+
         activeSheet,
         setActiveSheet,
       }}

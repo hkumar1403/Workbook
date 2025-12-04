@@ -27,7 +27,7 @@ export default function SheetTabs({ onSheetChange }) {
   useEffect(() => {
     async function loadSheets() {
       if (!workbookId) return;
-      
+
       // Check if sheets are already loaded for this workbookId
       if (sheetsLoadedRef.current.get(workbookId)) return;
 
@@ -39,13 +39,19 @@ export default function SheetTabs({ onSheetChange }) {
         // Backend returns an array of sheet names: ["Sheet1", "Sheet2", ...]
         const sheetNames = Array.isArray(res.data) ? res.data : [];
 
-        setSheets(sheetNames);
+        // Normalize objects → plain string names
+        const normalized = sheetNames.map((s) =>
+          typeof s === "string" ? s : s.name
+        );
+
+        setSheets(normalized);
         sheetsLoadedRef.current.set(workbookId, true);
 
         // Set first sheet as active if available and not already set
-        if (sheetNames.length > 0 && !activeSheet) {
-          setActiveSheet(sheetNames[0]);
-          onSheetChange?.(sheetNames[0]);
+        if (normalized.length > 0 && !activeSheet) {
+          const firstName = normalized[0];
+          setActiveSheet(firstName);
+          onSheetChange?.(firstName);
         }
       } catch (err) {
         // If 404, workbook doesn't exist - just return early
@@ -82,8 +88,11 @@ export default function SheetTabs({ onSheetChange }) {
     );
 
     const updated = res.data; // backend returns updated sheets array
+    const normalized = updated.map((s) =>
+      typeof s === "string" ? s : s.name
+    );
 
-    setSheets(updated);
+    setSheets(normalized);
     setActiveSheet(newName);
     onSheetChange?.(newName);
   };
@@ -127,7 +136,11 @@ export default function SheetTabs({ onSheetChange }) {
         { oldName, newName }
       );
 
-      setSheets(res.data); // backend returns updated sheet list
+      const updated = res.data; // backend returns updated sheet list
+      const normalized = updated.map((s) =>
+        typeof s === "string" ? s : s.name
+      );
+      setSheets(normalized);
 
       if (activeSheet === oldName) {
         setActiveSheet(newName);
@@ -150,10 +163,14 @@ export default function SheetTabs({ onSheetChange }) {
         `http://localhost:5001/workbook/${workbookId}/sheets/${confirmDelete}`
       );
 
-      setSheets(res.data); // backend returns updated sheet list
+      const updated = res.data; // backend returns updated sheet list
+      const normalized = updated.map((s) =>
+        typeof s === "string" ? s : s.name
+      );
+      setSheets(normalized);
 
       if (activeSheet === confirmDelete) {
-        setActiveSheet(res.data[0] || null);
+        setActiveSheet(normalized[0] || null);
       }
     } catch (err) {
       console.error("Delete error:", err);
@@ -179,30 +196,30 @@ export default function SheetTabs({ onSheetChange }) {
         ref={scrollRef}
         className="flex items-center gap-2 overflow-x-auto scrollbar-hide mx-2 flex-1"
       >
-        {sheets.map((sheet) => (
+        {sheets.map((sheetName) => (
           <button
-            key={sheet}
-            onClick={() => selectSheet(sheet)}
-            onContextMenu={(e) => openContextMenu(e, sheet)}
+            key={sheetName}
+            onClick={() => selectSheet(sheetName)}
+            onContextMenu={(e) => openContextMenu(e, sheetName)}
             className={`cursor-pointer px-3 py-1 rounded border text-sm transition-all
-              ${
-                activeSheet === sheet
-                  ? "bg-blue-500 hover:bg-blue-600 border-gray-400 text-white"
-                  : "bg-white border-gray-300 hover:bg-gray-100 text-black"
-              }
-            `}
+      ${
+        activeSheet === sheetName
+          ? "bg-blue-500 hover:bg-blue-600 border-gray-400 text-white"
+          : "bg-white border-gray-300 hover:bg-gray-100 text-black"
+      }
+    `}
           >
-            {renamingSheet === sheet ? (
+            {renamingSheet === sheetName ? (
               <input
                 className="bg-white m-0 w-20 border rounded outline-none text-black"
                 value={renameValue}
                 autoFocus
                 onChange={(e) => setRenameValue(e.target.value)}
-                onBlur={() => finishRename(sheet)}
-                onKeyDown={(e) => e.key === "Enter" && finishRename(sheet)}
+                onBlur={() => finishRename(sheetName)}
+                onKeyDown={(e) => e.key === "Enter" && finishRename(sheetName)}
               />
             ) : (
-              sheet
+              sheetName
             )}
           </button>
         ))}

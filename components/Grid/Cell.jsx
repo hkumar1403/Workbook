@@ -37,7 +37,7 @@ export default function Cell({ row, col, width }) {
   // Editing enters on double-click (Excel-style).
   useEffect(() => {
     if (!isSelected) {
-      setIsEditing(false);
+      setIsEditing(false); // exit edit when losing selection
     }
   }, [isSelected]);
 
@@ -57,11 +57,11 @@ export default function Cell({ row, col, width }) {
     }
   }, [isEditing, isSelected, cellValues, cellId]);
 
-  // Start editing on double click
-  const handleDoubleClick = () => {
-    setSelectedCell(cellId);
-    setIsEditing(true);
-  };
+  // // Start editing on double click
+  // const handleDoubleClick = () => {
+  //   setSelectedCell(cellId);
+  //   setIsEditing(true);
+  // };
 
   // Start editing if user types while selected (optional excel-like behavior)
   // (If you want this, uncomment. For strict Excel double-click only, leave commented.)
@@ -104,6 +104,12 @@ export default function Cell({ row, col, width }) {
       [cellId]: inputVal,
     });
 
+    // setIsEditing(false);
+    // 🔥 Notify GridContext that a cell changed → recompute formulas
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("cell-updated"));
+    }
+
     setIsEditing(false);
   };
 
@@ -130,9 +136,10 @@ export default function Cell({ row, col, width }) {
       }
       style={{ width }}
       onClick={() => {
-        if (!isEditing) setSelectedCell(cellId);
+        setSelectedCell(cellId);
+        setIsEditing(true); // ← ENTER EDIT MODE ON SINGLE CLICK
       }}
-      onDoubleClick={handleDoubleClick}
+      // onDoubleClick={handleDoubleClick}
     >
       {isEditing && isSelected ? (
         <input
@@ -151,4 +158,3 @@ export default function Cell({ row, col, width }) {
     </div>
   );
 }
-

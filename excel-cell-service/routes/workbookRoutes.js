@@ -6,6 +6,7 @@ const {
   addSheet,
   renameSheet,
   deleteSheet,
+  addColumn
 } = require("../controllers/sheetController");
 
 
@@ -16,10 +17,18 @@ router.post("/", async (req, res) => {
   try {
     const name = req.body.name || "New Workbook";
 
+    // Ensure new workbooks use proper Map structures
+    const cells = new Map();
+    cells.set("Sheet1", new Map());
+
+    const sheetMeta = new Map();
+    sheetMeta.set("Sheet1", { rows: 1000, columns: 26 });
+
     const workbook = await Workbook.create({
       name,
       sheets: ["Sheet1"],
-      cells: { Sheet1: {} },
+      cells,
+      sheetMeta,
     });
 
     res.json(workbook);
@@ -42,40 +51,56 @@ router.get("/", async (req, res) => {
 // INIT workbook - Get or create last workbook
 router.get("/init", async (req, res) => {
   try {
-    // Find the most recently created workbook
+    // Always try to find the most recently created workbook first.
     let workbook = await Workbook.findOne({}).sort({ createdAt: -1 });
 
-    // If no workbook exists, create one
     if (!workbook) {
+      // No workbook exists yet → create a brand new one with the required defaults.
+      const cells = new Map();
+      cells.set("Sheet1", new Map());
+
+      const sheetMeta = new Map();
+      sheetMeta.set("Sheet1", { rows: 1000, columns: 26 });
+
       workbook = await Workbook.create({
         name: "Workbook1",
         sheets: ["Sheet1"],
-        cells: new Map(),
+        cells,
+        sheetMeta,
+        createdAt: Date.now(),
       });
-      // Initialize Sheet1 cells map
-      workbook.cells.set("Sheet1", new Map());
-      workbook.markModified("cells");
-      await workbook.save();
     } else {
-      // Ensure Sheet1 exists
-      if (!workbook.sheets || workbook.sheets.length === 0) {
+      // Ensure we always have at least "Sheet1" and matching maps.
+
+      // Ensure sheet list exists and contains "Sheet1"
+      if (!Array.isArray(workbook.sheets) || workbook.sheets.length === 0) {
         workbook.sheets = ["Sheet1"];
       } else if (!workbook.sheets.includes("Sheet1")) {
         workbook.sheets.unshift("Sheet1");
       }
-      
-      // Ensure Sheet1 has a cells map
-      if (!workbook.cells) {
+
+      // Ensure cells map exists and has entry for "Sheet1"
+      if (!workbook.cells || !(workbook.cells instanceof Map)) {
         workbook.cells = new Map();
       }
       if (!workbook.cells.has("Sheet1")) {
         workbook.cells.set("Sheet1", new Map());
       }
-      
+
+      // Ensure sheetMeta map exists and has entry for "Sheet1"
+      if (!workbook.sheetMeta || !(workbook.sheetMeta instanceof Map)) {
+        workbook.sheetMeta = new Map();
+      }
+      if (!workbook.sheetMeta.has("Sheet1")) {
+        workbook.sheetMeta.set("Sheet1", { rows: 1000, columns: 26 });
+      }
+
       workbook.markModified("cells");
+      workbook.markModified("sheetMeta");
       await workbook.save();
     }
 
+    // Frontend currently expects workbookId; keep response shape stable.
     res.json({ workbookId: workbook._id.toString() });
   } catch (err) {
     console.error("Init workbook error:", err);
@@ -94,6 +119,8 @@ router.post("/:workbookId/sheets/:sheetName/import", async (req, res) => {
   return require("../controllers/sheetController").importSheet(req, res);
 });
 
+// ADD COLUMN to a sheet
+router.post("/:workbookId/sheets/:sheetName/columns", addColumn);
 
 // ------------------ DYNAMIC ROUTES LAST ------------------ //
 
