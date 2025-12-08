@@ -12,23 +12,23 @@ import UploadCSV from "../../../../components/UploadCSV";
 import WorkbookTitle from "../../../../components/WorkbookTitle";
 export default function WorkbookPage() {
   const { id } = useParams();
-  const { setWorkbookId } = useContext(GridContext);
+  const { updateWorkbookId } = useContext(GridContext);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (id) {
-      setWorkbookId(id);
+      updateWorkbookId(id);
     }
-  }, [id, setWorkbookId]);
+  }, [id]);
 
   return (
     <div className="w-full min-h-screen bg-white relative">
       {/* TOP BAR */}
       <div className="flex justify-between items-center p-3 border-b bg-gray-50">
-        <h1 className="text-xl font-serif font-bold text-gray-700">Astrel</h1>
+        <WorkbookTitle />
 
         <div className="flex items-center gap-3">
-          <WorkbookTitle />
+          
           {/* Upload CSV Button */}
           <UploadCSV />
 

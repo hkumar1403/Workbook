@@ -32,7 +32,7 @@ export default function WorkbookTitle() {
         />
       ) : (
         <span
-          className="font-bold text-lg cursor-pointer text-gray-700"
+          className="font-bold text-lg px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 hover:text-white cursor-pointer max-w-[220px] truncate"
           onClick={() => {
             setTempName(workbookName);
             setEditing(true);

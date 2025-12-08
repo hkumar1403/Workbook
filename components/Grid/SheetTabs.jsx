@@ -6,7 +6,6 @@ import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { GridContext } from "@/app/context/GridContext"; // <-- IMPORTANT
 import SheetMenu from "../SheetMenu";
 export default function SheetTabs({ onSheetChange }) {
-  const [sheets, setSheets] = useState([]); // <--- CHANGED: start empty
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const [clickedSheet, setClickedSheet] = useState(null);
@@ -17,59 +16,8 @@ export default function SheetTabs({ onSheetChange }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   const scrollRef = useRef(null);
-  const sheetsLoadedRef = useRef(new Map()); // Track loaded state per workbookId
 
-  const { workbookId, activeSheet, setActiveSheet } = useContext(GridContext); // <--- IMPORTANT: get workbook ID and activeSheet from context
-
-  // ------------------------------------------------------------
-  // 1️⃣ LOAD SHEETS FROM BACKEND
-  // ------------------------------------------------------------
-  useEffect(() => {
-    async function loadSheets() {
-      if (!workbookId) return;
-
-      // Check if sheets are already loaded for this workbookId
-      if (sheetsLoadedRef.current.get(workbookId)) return;
-
-      try {
-        const res = await axios.get(
-          `http://localhost:5001/workbook/${workbookId}/sheets`
-        );
-
-        // Backend returns an array of sheet names: ["Sheet1", "Sheet2", ...]
-        const sheetNames = Array.isArray(res.data) ? res.data : [];
-
-        // Normalize objects → plain string names
-        const normalized = sheetNames.map((s) =>
-          typeof s === "string" ? s : s.name
-        );
-
-        setSheets(normalized);
-        sheetsLoadedRef.current.set(workbookId, true);
-
-        // Set first sheet as active if available and not already set
-        if (normalized.length > 0 && !activeSheet) {
-          const firstName = normalized[0];
-          setActiveSheet(firstName);
-          onSheetChange?.(firstName);
-        }
-      } catch (err) {
-        // If 404, workbook doesn't exist - just return early
-        // GridContext will handle reinitialization
-        if (err.response?.status === 404) {
-          setSheets([]);
-          sheetsLoadedRef.current.delete(workbookId);
-          // Do NOT trigger reinitialization here - let GridContext handle it
-          return;
-        } else {
-          console.error("Error loading sheets:", err);
-        }
-      }
-    }
-
-    loadSheets();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workbookId]); // Only depend on workbookId - setActiveSheet is stable
+  const { workbookId, activeSheet, setActiveSheet, sheets, setSheets } = useContext(GridContext);
 
   // ------------------------------------------------------------
   // 2️⃣ ADD NEW SHEET → SAVE TO BACKEND

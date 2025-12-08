@@ -28,9 +28,10 @@ exports.getWorkbookCells = async (req, res) => {
       }
     } else {
       // Default to first sheet
-      sheetName = workbook.sheets && workbook.sheets.length > 0 
-        ? workbook.sheets[0] 
-        : "Sheet1";
+      sheetName =
+        workbook.sheets && workbook.sheets.length > 0
+          ? workbook.sheets[0]
+          : "Sheet1";
     }
 
     // Get cells for this sheet
@@ -57,52 +58,47 @@ exports.saveCell = async (req, res) => {
     const { workbookId, sheetName, cellId } = req.params;
     const { rawValue } = req.body;
 
-    // Validate required fields
     if (!workbookId || !sheetName || !cellId) {
-      return res.status(400).json({ error: "workbookId, sheetName, and cellId are required" });
+      return res
+        .status(400)
+        .json({ error: "workbookId, sheetName, and cellId are required" });
     }
 
-    // Find workbook by ID
-    let workbook = await Workbook.findById(workbookId);
+    const workbook = await Workbook.findById(workbookId);
+    if (!workbook) return res.status(404).json({ error: "Workbook not found" });
 
-    if (!workbook) {
-      return res.status(404).json({ error: "Workbook not found" });
-    }
-
-    // Ensure sheet exists in workbook
     if (!workbook.sheets.includes(sheetName)) {
       return res.status(404).json({ error: "Sheet not found in workbook" });
     }
 
-    // Ensure cells map exists
-    if (!workbook.cells) {
-      workbook.cells = new Map();
-    }
+    if (!workbook.cells) workbook.cells = new Map();
 
-    // Get or create cells map for this sheet
     let sheetCells = workbook.cells.get(sheetName);
     if (!sheetCells) {
       sheetCells = new Map();
       workbook.cells.set(sheetName, sheetCells);
     }
 
-    // Update cell value
-    sheetCells.set(cellId, rawValue || "");
+    // ✅ THE IMPORTANT FIX:
+    if (!rawValue || rawValue.trim() === "") {
+      sheetCells.delete(cellId); // ← REMOVE cell completely
+    } else {
+      sheetCells.set(cellId, rawValue); // ← Save normal value
+    }
 
     workbook.markModified("cells");
     await workbook.save();
 
-    // Return success response
-    return res.status(200).json({ 
+    return res.status(200).json({
       success: true,
-      workbookId: workbookId,
-      sheetName: sheetName,
-      cellId: cellId,
-      rawValue: rawValue || ""
+      workbookId,
+      sheetName,
+      cellId,
+      rawValue: rawValue || null,
     });
   } catch (err) {
     console.error("Error saving cell:", err);
-    return res.status(500).json({ error: err.message || "Failed to save cell" });
+    return res.status(500).json({ error: err.message });
   }
 };
 

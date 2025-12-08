@@ -12,6 +12,7 @@ export function GridProvider({ children }) {
   const [workbookId, setWorkbookId] = useState(null);
   const [cellValues, setCellValues] = useState({});
   const [workbookName, setWorkbookName] = useState("Workbook");
+  const [sheets, setSheets] = useState([]);
 
   const isInitializing = useRef(false);
   const isReinitializingRef = useRef(false);
@@ -19,21 +20,19 @@ export function GridProvider({ children }) {
 
   // Helper: update workbookId in state + localStorage
   const updateWorkbookId = (id) => {
+    // Fully reset workbook state BEFORE loading new data
+    setWorkbookName("");         // temporarily empty, not "Workbook"
+    setActiveSheet(null);
+    setCellValues({});
+    sheetsLoaded.current = false;
+    setSheets([]);  // CLEAR SHEETS LIST COMPLETELY
+
     if (id) {
-      try {
-        localStorage.setItem("workbookId", id);
-      } catch {
-        /* ignore localStorage errors */
-      }
+      try { localStorage.setItem("workbookId", id); } catch {}
     } else {
-      try {
-        localStorage.removeItem("workbookId");
-      } catch {
-        /* ignore */
-      }
+      try { localStorage.removeItem("workbookId"); } catch {}
     }
 
-    sheetsLoaded.current = false;
     setWorkbookId(id);
   };
 
@@ -44,6 +43,7 @@ export function GridProvider({ children }) {
     setWorkbookId(null);
     setActiveSheet(null);
     setCellValues({});
+    setSheets([]);
     sheetsLoaded.current = false;
   };
 
@@ -130,27 +130,54 @@ export function GridProvider({ children }) {
   }, []);
 
   // -----------------------------------------------------
-  // 2️⃣ LOAD SHEETS WHEN workbookId CHANGES
+  // 2️⃣ LOAD WORKBOOK NAME WHEN workbookId CHANGES
   // -----------------------------------------------------
   useEffect(() => {
-    sheetsLoaded.current = false;
+    if (!workbookId) return;
+
+    async function loadName() {
+      try {
+        const res = await axios.get(`http://localhost:5001/workbook/${workbookId}`);
+        if (res.data?.name) {
+          setWorkbookName(res.data.name);
+        }
+      } catch (err) {
+        console.error("Failed to load workbook name:", err);
+      }
+    }
+
+    loadName();
   }, [workbookId]);
 
+  // -----------------------------------------------------
+  // 3️⃣ LOAD SHEETS WHEN workbookId CHANGES
+  // -----------------------------------------------------
   useEffect(() => {
-    if (!workbookId || sheetsLoaded.current) return;
+    if (!workbookId) return;
+
+    sheetsLoaded.current = false;
 
     async function loadSheets() {
-      console.log("loadSheets", workbookId);
+      if (!workbookId) return;
+      
+      setSheets([]); // reset before fetching
+      
+      console.log("🔄 Fetching sheets for workbook:", workbookId);
       try {
         const res = await axios.get(
           `http://localhost:5001/workbook/${workbookId}/sheets`
         );
 
         const sheetNames = Array.isArray(res.data) ? res.data : [];
+        const normalized = sheetNames.map((s) =>
+          typeof s === "string" ? s : s.name
+        );
 
-        if (sheetNames.length > 0 && !activeSheet) {
-          const first = sheetNames[0];
-          setActiveSheet(typeof first === "string" ? first : first.name);
+        setSheets(normalized);
+        
+        if (normalized.length > 0) {
+          const first = normalized[0];
+          setActiveSheet(first);
         }
 
         sheetsLoaded.current = true;
@@ -185,11 +212,11 @@ export function GridProvider({ children }) {
       }
     }
 
-    loadSheets();
+    loadSheets();  // force reload
   }, [workbookId]);
 
   // -----------------------------------------------------
-  // 3️⃣ LOAD CELL DATA (and evaluate formulas)
+  // 4️⃣ LOAD CELL DATA (and evaluate formulas)
   // make loadData a stable callback so we can call it from listeners
   // -----------------------------------------------------
   const loadData = useCallback(async () => {
@@ -237,7 +264,7 @@ export function GridProvider({ children }) {
   }, [loadData]);
 
   // -----------------------------------------------------
-  // 4️⃣ allow external triggers (cells) to request reload
+  // 5️⃣ allow external triggers (cells) to request reload
   // by listening to a custom window event "cell-updated"
   // (Cells should dispatch window.dispatchEvent(new Event("cell-updated")))
   // -----------------------------------------------------
@@ -252,7 +279,7 @@ export function GridProvider({ children }) {
   }, [loadData]);
 
   // -----------------------------------------------------
-  // 5️⃣ Helpers exposed to components
+  // 6️⃣ Helpers exposed to components
   // -----------------------------------------------------
   function getCellDisplayValue(cellId) {
     const raw = cellValues[cellId];
@@ -290,21 +317,26 @@ export function GridProvider({ children }) {
   };
 
   const renameWorkbook = async (newName) => {
-    if (!workbookId) return;
+  if (!workbookId) return;
 
-    try {
-      await axios.put(`http://localhost:5001/workbook/${workbookId}/rename`, {
-        name: newName,
-      });
+  // 🔥 enforce max length
+  const safeName = newName.slice(0, 300);
 
-      setWorkbookName(newName);
-    } catch (err) {
-      console.error("Workbook rename error:", err);
-    }
-  };
+  try {
+    await axios.put(
+      `http://localhost:5001/workbook/${workbookId}/rename`,
+      { name: safeName }
+    );
+
+    setWorkbookName(safeName);
+  } catch (err) {
+    console.error("Workbook rename error:", err);
+  }
+};
+
 
   // -----------------------------------------------------
-  // 6️⃣ PROVIDER VALUES
+  // 7️⃣ PROVIDER VALUES
   // expose both the raw setter and the wrapper to keep existing callers working
   // -----------------------------------------------------
   return (
@@ -334,6 +366,8 @@ export function GridProvider({ children }) {
         workbookName,
         setWorkbookName,
         renameWorkbook,
+        sheets,
+        setSheets,
       }}
     >
       {children}
