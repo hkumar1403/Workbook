@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect, useContext } from "react";
+import { useState, useRef, useEffect, useContext, useCallback, memo } from "react";
 import axios from "axios";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { GridContext } from "@/app/context/GridContext"; // <-- IMPORTANT
 import SheetMenu from "../SheetMenu";
-export default function SheetTabs({ onSheetChange }) {
+
+function SheetTabs({ onSheetChange }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const [clickedSheet, setClickedSheet] = useState(null);
@@ -22,7 +23,9 @@ export default function SheetTabs({ onSheetChange }) {
   // ------------------------------------------------------------
   // 2️⃣ ADD NEW SHEET → SAVE TO BACKEND
   // ------------------------------------------------------------
-  const addSheet = async () => {
+  const addSheet = useCallback(async () => {
+    if (!workbookId) return;
+    
     const newName = `Sheet${sheets.length + 1}`;
     console.log(
       "Calling:",
@@ -43,40 +46,42 @@ export default function SheetTabs({ onSheetChange }) {
     setSheets(normalized);
     setActiveSheet(newName);
     onSheetChange?.(newName);
-  };
+  }, [workbookId, sheets.length, setSheets, setActiveSheet, onSheetChange]);
 
   // ------------------------------------------------------------
   // 3️⃣ CHANGE ACTIVE SHEET
   // ------------------------------------------------------------
-  const selectSheet = (name) => {
+  const selectSheet = useCallback((name) => {
     setActiveSheet(name);
     onSheetChange?.(name);
-  };
+  }, [setActiveSheet, onSheetChange]);
 
   // ------------------------------------------------------------
   // 4️⃣ RENDER
   // ------------------------------------------------------------
 
   // SHOW RENAME AND DELETE MENU
-  const openContextMenu = (e, sheet) => {
+  const openContextMenu = useCallback((e, sheet) => {
     e.preventDefault();
     setClickedSheet(sheet);
     setMenuPosition({ x: e.clientX, y: e.clientY });
     setMenuOpen(true);
-  };
+  }, []);
 
-  const startRename = () => {
+  const startRename = useCallback(() => {
     setRenamingSheet(clickedSheet);
     setRenameValue(clickedSheet);
     setMenuOpen(false);
-  };
+  }, [clickedSheet]);
 
-  const finishRename = async (oldName) => {
+  const finishRename = useCallback(async (oldName) => {
     const newName = renameValue.trim();
     if (!newName || newName === oldName) {
       setRenamingSheet(null);
       return;
     }
+
+    if (!workbookId) return;
 
     try {
       const res = await axios.put(
@@ -98,14 +103,16 @@ export default function SheetTabs({ onSheetChange }) {
     }
 
     setRenamingSheet(null);
-  };
+  }, [workbookId, renameValue, activeSheet, setSheets, setActiveSheet]);
 
-  const startDelete = () => {
+  const startDelete = useCallback(() => {
     setConfirmDelete(clickedSheet);
     setMenuOpen(false);
-  };
+  }, [clickedSheet]);
 
-  const deleteSheet = async () => {
+  const deleteSheet = useCallback(async () => {
+    if (!workbookId || !confirmDelete) return;
+
     try {
       const res = await axios.delete(
         `http://localhost:5001/workbook/${workbookId}/sheets/${confirmDelete}`
@@ -125,7 +132,7 @@ export default function SheetTabs({ onSheetChange }) {
     }
 
     setConfirmDelete(null);
-  };
+  }, [workbookId, confirmDelete, activeSheet, setSheets, setActiveSheet]);
 
   return (
     <div className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-300 flex items-center px-3 py-2 select-none">
@@ -231,3 +238,6 @@ export default function SheetTabs({ onSheetChange }) {
     </div>
   );
 }
+
+// Memoize SheetTabs to prevent unnecessary rerenders
+export default memo(SheetTabs);

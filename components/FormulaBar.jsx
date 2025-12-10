@@ -1,27 +1,40 @@
 "use client";
 
 import axios from "axios";
-import { useContext, useState, useEffect } from "react";
+import { useContext, useState, useEffect, useRef, useCallback, memo, useMemo } from "react";
 import { GridContext } from "@/app/context/GridContext";
+import { useCellStore, useCellRawValue } from "@/app/store/cellStore";
 import * as fjs from "formulajs";
 
-export default function FormulaBar() {
-  const { selectedCell, cellValues, setCellValues, activeSheet, workbookId } = useContext(GridContext);
+function FormulaBar() {
+  const { selectedCell, activeSheet, workbookId, setFormulaModeCell } = useContext(GridContext);
+  
+  // Use Zustand store instead of context for cell values
+  const updateCell = useCellStore((state) => state.updateCell);
+  const setCellValues = useCellStore((state) => state.setCellValues);
 
   const [localInput, setLocalInput] = useState("");
   const [suggestions, setSuggestions] = useState([]);
+  const inputRef = useRef(null);
 
-  const FUNCTION_NAMES = Object.keys(fjs).map(fn => fn.toUpperCase()).sort();
+  // Memoize FUNCTION_NAMES to prevent recreation on every render
+  const FUNCTION_NAMES = useMemo(() => 
+    Object.keys(fjs).map(fn => fn.toUpperCase()).sort(),
+    []
+  );
+  
+  // Get cell raw value using optimized selector (only rerenders when selectedCell changes)
+  const selectedCellRawValue = useCellRawValue(selectedCell || '');
 
-  // Load selected cell raw value
+  // Load selected cell raw value - only when selectedCell changes
   useEffect(() => {
     if (selectedCell) {
-      setLocalInput(cellValues[selectedCell] || "");
+      setLocalInput(selectedCellRawValue || "");
       setSuggestions([]);
     }
-  }, [selectedCell, cellValues]);
+  }, [selectedCell, selectedCellRawValue]);
 
-  function handleChange(e) {
+  const handleChange = useCallback((e) => {
     const value = e.target.value;
     setLocalInput(value);
 
@@ -39,15 +52,16 @@ export default function FormulaBar() {
     } else {
       setSuggestions([]);
     }
-  }
+  }, [FUNCTION_NAMES]);
 
-  function chooseSuggestion(fn) {
+  const chooseSuggestion = useCallback((fn) => {
     setLocalInput("=" + fn + "(");
     setSuggestions([]);
-  }
+  }, []);
 
-  async function handleKeyDown(e) {
+  const handleKeyDown = useCallback(async (e) => {
     if (e.key === "Enter" && selectedCell) {
+      e.preventDefault();
 
       const raw = localInput;
       
@@ -68,12 +82,14 @@ export default function FormulaBar() {
 
       if (raw.startsWith("=")) {
         try {
+          // Get all cell values from Zustand store for formula evaluation
+          const allCells = useCellStore.getState().cellValues;
           const formulaRes = await axios.post(
             "http://localhost:5002/evaluate",
             {
               cellId: selectedCell,
               rawValue: raw,
-              allCells: cellValues,
+              allCells: allCells,
             }
           );
           computedValue = formulaRes.data.result;
@@ -82,15 +98,20 @@ export default function FormulaBar() {
         }
       }
 
-      setCellValues({
-        ...cellValues,
-        [selectedCell]: raw,
-        [`${selectedCell}_value`]: computedValue,
-      });
+      // Update Zustand store instead of context
+      updateCell(selectedCell, raw, computedValue);
 
       setSuggestions([]);
+      
+      // Clear formula mode so clicking cells works normally
+      setFormulaModeCell(null);
+      
+      // Blur the input to remove focus
+      if (inputRef.current) {
+        inputRef.current.blur();
+      }
     }
-  }
+  }, [selectedCell, localInput, workbookId, activeSheet, updateCell, setFormulaModeCell]);
 
   return (
     <div className="relative flex items-center w-full border bg-white">
@@ -100,6 +121,7 @@ export default function FormulaBar() {
       </div>
 
       <input
+        ref={inputRef}
         type="text"
         value={localInput}
         onChange={handleChange}
@@ -124,3 +146,7 @@ export default function FormulaBar() {
     </div>
   );
 }
+
+// Memoize FormulaBar to prevent unnecessary rerenders
+// It only rerenders when selectedCell changes (via Zustand selector)
+export default memo(FormulaBar);

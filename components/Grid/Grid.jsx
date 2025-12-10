@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect, useContext } from "react";
+import { useState, useRef, useCallback, useEffect, useContext, useMemo, memo } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { GridContext } from "@/app/context/GridContext";
 import axios from "axios";
 import Cell from "./Cell";
@@ -49,18 +50,22 @@ export default function Grid() {
   }, [columnLabels]);
 
   const { workbookId, activeSheet } = useContext(GridContext);
+  
+  // Memoize workbookId and activeSheet to prevent unnecessary rerenders
+  const memoizedWorkbookId = useMemo(() => workbookId, [workbookId]);
+  const memoizedActiveSheet = useMemo(() => activeSheet, [activeSheet]);
 
   useEffect(() => {
-    if (!workbookId || !activeSheet) return;
+    if (!memoizedWorkbookId || !memoizedActiveSheet) return;
 
     axios
-      .get(`http://localhost:5001/workbook/${workbookId}/sheets`)
+      .get(`http://localhost:5001/workbook/${memoizedWorkbookId}/sheets`)
       .then((res) => {
-        const sheet = res.data.find((s) => s.name === activeSheet);
+        const sheet = res.data.find((s) => s.name === memoizedActiveSheet);
         if (sheet) setColumnLabels(sheet.columnLabels);
       })
       .catch((err) => console.error("Load column labels error:", err));
-  }, [workbookId, activeSheet]);
+  }, [memoizedWorkbookId, memoizedActiveSheet]);
 
   // Track resizing
   const resizingCol = useRef(null);
@@ -91,7 +96,7 @@ export default function Grid() {
         return updated;
       });
     },
-    [setColWidths]
+    []
   );
 
   // Mouse up
@@ -103,9 +108,11 @@ export default function Grid() {
   };
 
   // Create new columns
-  async function addColumnLeft(index) {
+  const addColumnLeft = useCallback(async (index) => {
+    if (!memoizedWorkbookId || !memoizedActiveSheet) return;
+    
     const res = await axios.post(
-      `http://localhost:5001/workbook/${workbookId}/sheets/${activeSheet}/columns`,
+      `http://localhost:5001/workbook/${memoizedWorkbookId}/sheets/${memoizedActiveSheet}/columns`,
       { index, direction: "left" }
     );
 
@@ -116,11 +123,13 @@ export default function Grid() {
       updated.splice(index, 0, 120);
       return updated;
     });
-  }
+  }, [memoizedWorkbookId, memoizedActiveSheet]);
 
-  async function addColumnRight(index) {
+  const addColumnRight = useCallback(async (index) => {
+    if (!memoizedWorkbookId || !memoizedActiveSheet) return;
+    
     const res = await axios.post(
-      `http://localhost:5001/workbook/${workbookId}/sheets/${activeSheet}/columns`,
+      `http://localhost:5001/workbook/${memoizedWorkbookId}/sheets/${memoizedActiveSheet}/columns`,
       { index, direction: "right" }
     );
 
@@ -131,7 +140,7 @@ export default function Grid() {
       updated.splice(index + 1, 0, 120);
       return updated;
     });
-  }
+  }, [memoizedWorkbookId, memoizedActiveSheet]);
 
   function syncColumnWidths(totalColumns) {
     setColWidths((prev) => {
@@ -145,75 +154,239 @@ export default function Grid() {
     });
   }
 
-  // Build column headers
-  const columnHeaders = columnLabels.map((label, idx) => (
-    <div
-      key={label}
-      className="table-cell h-10 border bg-gray-100 text-black font-bold text-center align-middle relative select-none"
-      style={{ width: colWidths[idx], minWidth: colWidths[idx] }}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        setColMenu({
-          visible: true,
-          x: e.clientX,
-          y: e.clientY,
-          colIndex: idx,
-        });
-      }}
-    >
-      {label}
-
-      {/* Resize handle */}
+  // Memoize column headers to prevent recreation on every render
+  const columnHeaders = useMemo(() => 
+    columnLabels.map((label, idx) => (
       <div
-        onMouseDown={(e) => beginResize(idx, e)}
-        className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-blue-300"
-      ></div>
-    </div>
-  ));
+        key={label}
+        className="table-cell h-10 border bg-gray-100 text-black font-bold text-center align-middle relative select-none"
+        style={{ width: colWidths[idx], minWidth: colWidths[idx] }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setColMenu({
+            visible: true,
+            x: e.clientX,
+            y: e.clientY,
+            colIndex: idx,
+          });
+        }}
+      >
+        {label}
 
-  const headerRow = (
+        {/* Resize handle */}
+        <div
+          onMouseDown={(e) => beginResize(idx, e)}
+          className="absolute top-0 right-0 h-full w-2 cursor-col-resize hover:bg-blue-300"
+        ></div>
+      </div>
+    )), [columnLabels, colWidths]
+  );
+
+  const headerRow = useMemo(() => (
     <div className="table-row">
       <div className="table-cell w-10 h-10 border bg-gray-200"></div>
       {columnHeaders}
     </div>
-  );
+  ), [columnHeaders]);
 
-  // Build grid rows
-  const grid = [];
-  for (let r = 1; r <= rows; r++) {
-    const cells = [];
-
-    // Row label
-    cells.push(
-      <div
-        key={`row-label-${r}`}
-        className="table-cell w-10 h-10 border bg-gray-100 text-black font-bold text-center align-middle"
-      >
-        {r}
-      </div>
-    );
-
-    // Cells
-    for (let c = 1; c <= columnLabels.length; c++) {
-      const idx = c - 1;
-      cells.push(
-        <Cell key={`r${r}c${c}`} row={r} col={c} width={colWidths[c - 1]} />
-      );
+  // Virtualization setup
+  const parentRef = useRef(null);
+  const rowHeight = 40; // h-10 = 40px
+  
+  // Calculate total width for horizontal scrolling
+  const totalWidth = useMemo(() => {
+    return 40 + colWidths.reduce((sum, width) => sum + (width || 120), 0);
+  }, [colWidths]);
+  
+  // Calculate column positions for horizontal scrolling
+  const columnPositions = useMemo(() => {
+    const positions = [0]; // Row label column at 0
+    let currentPos = 40; // Start after row label
+    for (let i = 0; i < columnLabels.length; i++) {
+      positions.push(currentPos);
+      currentPos += colWidths[i] || 120;
     }
+    return positions;
+  }, [columnLabels.length, colWidths]);
 
-    grid.push(
-      <div key={`row-${r}`} className="table-row">
-        {cells}
-      </div>
-    );
-  }
+  // Row virtualizer - only renders visible rows
+  const rowVirtualizer = useVirtualizer({
+    count: rows,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 10, // Render 10 extra rows above/below for smooth scrolling
+  });
+
+  // Calculate visible column range based on scroll position
+  const [scrollState, setScrollState] = useState({ scrollLeft: 0, clientWidth: 1000 });
+  
+  const handleScroll = useCallback((e) => {
+    const target = e.target;
+    setScrollState({
+      scrollLeft: target.scrollLeft,
+      clientWidth: target.clientWidth || 1000
+    });
+  }, []);
+
+  // Calculate visible columns based on scroll position
+  const visibleColumnRange = useMemo(() => {
+    const { scrollLeft, clientWidth } = scrollState;
+    let start = 0;
+    let end = columnLabels.length;
+    
+    if (columnLabels.length === 0) {
+      return { start: 0, end: 0 };
+    }
+    
+    // Find which columns are visible with buffer
+    const buffer = 500; // Render 500px before/after viewport for smooth scrolling
+    for (let i = 0; i < columnPositions.length - 1; i++) {
+      if (columnPositions[i + 1] > scrollLeft - buffer) {
+        start = Math.max(0, i - 1);
+        break;
+      }
+    }
+    
+    for (let i = start; i < columnPositions.length - 1; i++) {
+      if (columnPositions[i] > scrollLeft + clientWidth + buffer) {
+        end = i + 1;
+        break;
+      }
+    }
+    
+    return { start, end: Math.min(end, columnLabels.length) };
+  }, [scrollState, columnPositions, columnLabels.length]);
+
+  // Initialize scroll state on mount and when container size changes
+  useEffect(() => {
+    const updateScrollState = () => {
+      if (parentRef.current) {
+        setScrollState({
+          scrollLeft: parentRef.current.scrollLeft,
+          clientWidth: parentRef.current.clientWidth || 1000
+        });
+      }
+    };
+    
+    updateScrollState();
+    
+    // Update on resize
+    const resizeObserver = new ResizeObserver(updateScrollState);
+    if (parentRef.current) {
+      resizeObserver.observe(parentRef.current);
+    }
+    
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   return (
     <>
-      <div className="overflow-auto w-full">
-        <div className="table border-collapse table-fixed">
-          {headerRow}
-          {grid}
+      <div 
+        ref={parentRef}
+        className="overflow-auto w-full"
+        onScroll={handleScroll}
+        style={{ height: 'calc(100vh - 200px)', overflow: 'auto' }}
+      >
+        {/* Fixed header row */}
+        <div 
+          style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 10,
+            backgroundColor: 'white',
+            width: totalWidth,
+            height: 40
+          }}
+        >
+          <div 
+            className="h-10 border bg-gray-200" 
+            style={{ 
+              position: 'absolute',
+              left: 0,
+              width: 40,
+              height: 40,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          ></div>
+          {columnHeaders.map((header, idx) => (
+            <div 
+              key={header.key || idx} 
+              style={{ 
+                position: 'absolute', 
+                left: columnPositions[idx + 1], 
+                width: colWidths[idx] || 120,
+                height: 40
+              }}
+            >
+              {header}
+            </div>
+          ))}
+        </div>
+
+        {/* Virtualized content container */}
+        <div 
+          style={{ 
+            width: totalWidth,
+            height: `${rowVirtualizer.getTotalSize()}px`,
+            position: 'relative'
+          }}
+        >
+          {/* Virtualized rows */}
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const row = virtualRow.index + 1; // Rows are 1-indexed
+            return (
+              <div
+                key={virtualRow.key}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: totalWidth,
+                  height: `${virtualRow.size}px`,
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                {/* Row label - fixed position */}
+                <div
+                  className="table-cell h-10 border bg-gray-100 text-black font-bold text-center align-middle"
+                  style={{ 
+                    position: 'absolute',
+                    left: 0,
+                    width: 40,
+                    height: 40,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  {row}
+                </div>
+
+                {/* Visible cells for this row */}
+                {Array.from({ length: visibleColumnRange.end - visibleColumnRange.start }, (_, idx) => {
+                  const col = visibleColumnRange.start + idx + 1; // Columns are 1-indexed
+                  const colIdx = visibleColumnRange.start + idx;
+                  return (
+                    <div
+                      key={`r${row}c${col}`}
+                      style={{
+                        position: 'absolute',
+                        left: columnPositions[colIdx + 1],
+                        width: colWidths[colIdx] || 120,
+                        height: 40
+                      }}
+                    >
+                      <Cell row={row} col={col} width={colWidths[colIdx] || 120} />
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       </div>
 

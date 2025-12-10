@@ -1,59 +1,119 @@
 "use client";
 
 import axios from "axios";
-import { createContext, useState, useEffect, useRef, useCallback } from "react";
+import {
+  createContext,
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
+import { HyperFormula } from "hyperformula";
+import { useCellStore } from "../store/cellStore";
 
 export const GridContext = createContext();
 
 export function GridProvider({ children }) {
+  // ---------------------------------------------
+  // BASIC STATE - Only lightweight state in context
+  // ---------------------------------------------
   const [selectedCell, setSelectedCell] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeSheet, setActiveSheet] = useState(null);
   const [workbookId, setWorkbookId] = useState(null);
-  const [cellValues, setCellValues] = useState({});
   const [workbookName, setWorkbookName] = useState("Workbook");
   const [sheets, setSheets] = useState([]);
+  
+  // Get Zustand store methods (non-reactive, used in callbacks)
+  const setCellValues = useCellStore((state) => state.setCellValues);
+  const clearCells = useCellStore((state) => state.clearCells);
+
+  // Formula-selection features
+  const [formulaModeCell, setFormulaModeCell] = useState(null);
+  const [formulaCursor, setFormulaCursor] = useState(null);
 
   const isInitializing = useRef(false);
   const isReinitializingRef = useRef(false);
   const sheetsLoaded = useRef(false);
 
-  // Helper: update workbookId in state + localStorage
-  const updateWorkbookId = (id) => {
-    // Fully reset workbook state BEFORE loading new data
-    setWorkbookName("");         // temporarily empty, not "Workbook"
+  // ---------------------------------------------
+  // 🧠 HYPERFORMULA ENGINE
+  // ---------------------------------------------
+  const hfRef = useRef(null);
+  const sheetIdMap = useRef({}); // map sheetName → HF sheetId
+
+  if (!hfRef.current) {
+    hfRef.current = HyperFormula.buildEmpty({
+      licenseKey: "gpl-v3",
+    });
+  }
+
+  const hf = hfRef.current;
+
+  // ---------------------------------------------
+  // Add Formula Reference During Editing
+  // ---------------------------------------------
+  const insertCellReferenceIntoFormula = useCallback((refCellId) => {
+    if (!formulaModeCell) return;
+
+    // Get current raw value from Zustand store
+    const currentRaw = useCellStore.getState().cellValues[formulaModeCell] ?? "";
+    const cursor = formulaCursor;
+
+    let newRaw =
+      cursor && typeof cursor.start === "number"
+        ? currentRaw.slice(0, cursor.start) +
+          refCellId +
+          currentRaw.slice(cursor.end)
+        : currentRaw + refCellId;
+
+    const updateCell = useCellStore.getState().updateCell;
+    updateCell(formulaModeCell, newRaw);
+
+    const pos = (cursor?.start ?? currentRaw.length) + refCellId.length;
+    setFormulaCursor({ start: pos, end: pos });
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("formula-inserted", {
+          detail: { cellId: formulaModeCell, cursor: { start: pos, end: pos } },
+        })
+      );
+    }
+  }, [formulaModeCell, formulaCursor]);
+
+  // ---------------------------------------------
+  // Workbook ID setter
+  // ---------------------------------------------
+  const updateWorkbookId = useCallback((id) => {
+    setWorkbookName("");
     setActiveSheet(null);
-    setCellValues({});
+    clearCells();
     sheetsLoaded.current = false;
-    setSheets([]);  // CLEAR SHEETS LIST COMPLETELY
+    setSheets([]);
 
     if (id) {
-      try { localStorage.setItem("workbookId", id); } catch {}
+      localStorage.setItem("workbookId", id);
     } else {
-      try { localStorage.removeItem("workbookId"); } catch {}
+      localStorage.removeItem("workbookId");
     }
 
     setWorkbookId(id);
-  };
+  }, [clearCells]);
 
-  const hardResetWorkbookState = () => {
-    try {
-      localStorage.removeItem("workbookId");
-    } catch {}
+  const hardResetWorkbookState = useCallback(() => {
+    localStorage.removeItem("workbookId");
     setWorkbookId(null);
     setActiveSheet(null);
-    setCellValues({});
+    clearCells();
     setSheets([]);
     sheetsLoaded.current = false;
-  };
+  }, [clearCells]);
 
-  useEffect(() => {
-    console.log("📌 WORKBOOK ID CHANGED:", workbookId);
-  }, [workbookId]);
-
-  // -----------------------------------------------------
-  // 1️⃣ INITIALIZE WORKBOOK ON FIRST LOAD
-  // -----------------------------------------------------
+  // ---------------------------------------------
+  // INITIAL LOAD
+  // ---------------------------------------------
   useEffect(() => {
     if (workbookId || isInitializing.current) return;
 
@@ -62,65 +122,44 @@ export function GridProvider({ children }) {
       isInitializing.current = true;
 
       try {
-        const storedWorkbookId =
-          typeof window !== "undefined"
-            ? localStorage.getItem("workbookId")
-            : null;
+        const stored = localStorage.getItem("workbookId");
 
-        if (storedWorkbookId) {
+        if (stored) {
           try {
-            // Validate stored ID
             await axios.get(
-              `http://localhost:5001/workbook/${storedWorkbookId}/sheets`
+              `http://localhost:5001/workbook/${stored}/sheets`
             );
             const wbRes = await axios.get(
-              `http://localhost:5001/workbook/${storedWorkbookId}`
+              `http://localhost:5001/workbook/${stored}`
             );
+
             setWorkbookName(wbRes.data.name);
-            setWorkbookId(storedWorkbookId);
+            setWorkbookId(stored);
             isInitializing.current = false;
             return;
-          } catch (err) {
-            console.warn(
-              "❌ Invalid or dead workbookId detected:",
-              storedWorkbookId
-            );
+          } catch {
+            localStorage.removeItem("workbookId");
 
-            try {
-              localStorage.removeItem("workbookId");
-            } catch {}
-
-            setWorkbookId(null);
-            setActiveSheet(null);
-            sheetsLoaded.current = false;
-
-            // fetch a fresh workbook
             const res = await axios.get("http://localhost:5001/workbook/init");
             const newId = res.data.workbookId;
-            console.log("✅ New workbookId from backend:", newId);
-            try {
-              localStorage.setItem("workbookId", newId);
-            } catch {}
+
+            localStorage.setItem("workbookId", newId);
             setWorkbookId(newId);
+
             isInitializing.current = false;
             return;
           }
         }
 
-        // No stored id: create/init
         const res = await axios.get("http://localhost:5001/workbook/init");
-        const newWorkbookId = res.data.workbookId;
+        const newId = res.data.workbookId;
 
-        if (newWorkbookId) {
-          try {
-            localStorage.setItem("workbookId", newWorkbookId);
-          } catch {}
-          setWorkbookId(newWorkbookId);
-        } else {
-          setWorkbookId(null);
+        if (newId) {
+          localStorage.setItem("workbookId", newId);
+          setWorkbookId(newId);
         }
       } catch (err) {
-        console.error("Error initializing workbook:", err);
+        console.error("Init error:", err);
       } finally {
         isInitializing.current = false;
       }
@@ -129,18 +168,18 @@ export function GridProvider({ children }) {
     initializeWorkbook();
   }, []);
 
-  // -----------------------------------------------------
-  // 2️⃣ LOAD WORKBOOK NAME WHEN workbookId CHANGES
-  // -----------------------------------------------------
+  // ---------------------------------------------
+  // LOAD WORKBOOK NAME
+  // ---------------------------------------------
   useEffect(() => {
     if (!workbookId) return;
 
     async function loadName() {
       try {
-        const res = await axios.get(`http://localhost:5001/workbook/${workbookId}`);
-        if (res.data?.name) {
-          setWorkbookName(res.data.name);
-        }
+        const res = await axios.get(
+          `http://localhost:5001/workbook/${workbookId}`
+        );
+        setWorkbookName(res.data.name);
       } catch (err) {
         console.error("Failed to load workbook name:", err);
       }
@@ -149,106 +188,197 @@ export function GridProvider({ children }) {
     loadName();
   }, [workbookId]);
 
-  // -----------------------------------------------------
-  // 3️⃣ LOAD SHEETS WHEN workbookId CHANGES
-  // -----------------------------------------------------
+  // ---------------------------------------------
+  // LOAD SHEETS LIST
+  // ---------------------------------------------
   useEffect(() => {
     if (!workbookId) return;
 
     sheetsLoaded.current = false;
 
     async function loadSheets() {
-      if (!workbookId) return;
-      
-      setSheets([]); // reset before fetching
-      
-      console.log("🔄 Fetching sheets for workbook:", workbookId);
       try {
         const res = await axios.get(
           `http://localhost:5001/workbook/${workbookId}/sheets`
         );
 
-        const sheetNames = Array.isArray(res.data) ? res.data : [];
-        const normalized = sheetNames.map((s) =>
-          typeof s === "string" ? s : s.name
-        );
+        const names = Array.isArray(res.data)
+          ? res.data.map((s) => (typeof s === "string" ? s : s.name))
+          : [];
 
-        setSheets(normalized);
-        
-        if (normalized.length > 0) {
-          const first = normalized[0];
-          setActiveSheet(first);
+        setSheets(names);
+
+        if (names.length > 0) {
+          setActiveSheet(names[0]);
         }
 
         sheetsLoaded.current = true;
       } catch (err) {
-        if (err.response?.status === 404) {
-          if (isReinitializingRef.current) return;
-
-          isReinitializingRef.current = true;
-
-          hardResetWorkbookState();
-
-          try {
-            const res = await axios.get("http://localhost:5001/workbook/init");
-            const newWorkbookId = res.data.workbookId;
-
-            if (newWorkbookId) {
-              try {
-                localStorage.setItem("workbookId", newWorkbookId);
-              } catch {}
-              setWorkbookId(newWorkbookId);
-            } else {
-              setWorkbookId(null);
-            }
-          } catch (initErr) {
-            console.error("Error reinitializing workbook:", initErr);
-          } finally {
-            isReinitializingRef.current = false;
-          }
-        } else {
-          console.error("Error loading sheets:", err);
-        }
+        console.error("Sheet load error:", err);
       }
     }
 
-    loadSheets();  // force reload
+    loadSheets();
   }, [workbookId]);
 
-  // -----------------------------------------------------
-  // 4️⃣ LOAD CELL DATA (and evaluate formulas)
-  // make loadData a stable callback so we can call it from listeners
-  // -----------------------------------------------------
+  // ---------------------------------------------
+  // HYPERFORMULA HELPERS
+  // ---------------------------------------------
+  function parseCellId(cellId) {
+    const match = cellId.match(/^([A-Z]+)(\d+)$/);
+    if (!match) return null;
+
+    const letters = match[1];
+    const row = parseInt(match[2], 10) - 1;
+
+    const col =
+      letters.split("").reduce((acc, ch) => acc * 26 + (ch.charCodeAt(0) - 64), 0) -
+      1;
+
+    return { row, col };
+  }
+
+  function buildCellId(col, row) {
+    function colToLetter(n) {
+      let s = "";
+      while (n > 0) {
+        const r = (n - 1) % 26;
+        s = String.fromCharCode(65 + r) + s;
+        n = Math.floor((n - 1) / 26);
+      }
+      return s;
+    }
+
+    return `${colToLetter(col)}${row}`;
+  }
+
+  // ---------------------------------------------
+  // LOAD DATA + APPLY HYPERFORMULA
+  // ---------------------------------------------
   const loadData = useCallback(async () => {
     if (!workbookId || !activeSheet) return;
 
-    console.log("loadData", workbookId, activeSheet);
     try {
       const res = await axios.get(
         `http://localhost:5001/cells/${workbookId}?sheet=${encodeURIComponent(
           activeSheet
         )}`
       );
+
       const raw = res.data || {};
 
-      let newState = { ...raw };
+      // --------------------------------------------------
+      // ENSURE THE ACTIVE SHEET EXISTS IN HYPERFORMULA
+      // --------------------------------------------------
+      let sheetId;
 
-      // Recompute formulas by calling formula service
-      for (let cellId in raw) {
-        if (raw[cellId]?.startsWith("=")) {
-          try {
-            const formulaRes = await axios.post(
-              "http://localhost:5002/evaluate",
-              {
-                cellId,
-                rawValue: raw[cellId],
-                allCells: raw,
-              }
-            );
-            newState[cellId + "_value"] = formulaRes.data.result;
-          } catch {
-            newState[cellId + "_value"] = "ERR";
+      // Try to get existing sheet ID
+      try {
+        const existingId = hf.getSheetId(activeSheet);
+        // Verify it's actually a number
+        if (typeof existingId === "number") {
+          sheetId = existingId;
+        } else {
+          sheetId = null; // Invalid ID, need to create/recreate
+        }
+      } catch (e) {
+        sheetId = null;
+      }
+
+      // If sheet does not exist, create it
+      if (sheetId === null || sheetId === undefined) {
+        try {
+          // Add the sheet (may throw if sheet already exists, which is fine)
+          hf.addSheet(activeSheet);
+        } catch (addError) {
+          // Sheet might already exist, that's okay - we'll get the ID below
+        }
+        
+        // Always get the sheet ID after attempting to add (most reliable method)
+        try {
+          sheetId = hf.getSheetId(activeSheet);
+          // Verify it's actually a number
+          if (typeof sheetId !== "number") {
+            throw new Error(`getSheetId returned non-number: ${typeof sheetId} (${sheetId})`);
           }
+        } catch (getError) {
+          console.error("Failed to get sheet ID after creation:", activeSheet, getError);
+          return; // Cannot proceed without valid sheet
+        }
+      }
+      
+      // Final verification that sheetId is valid
+      if (typeof sheetId !== "number") {
+        // Last attempt: try to get it from HyperFormula
+        try {
+          const finalSheetId = hf.getSheetId(activeSheet);
+          if (typeof finalSheetId === "number") {
+            sheetId = finalSheetId;
+          } else {
+            console.error("Final sheetId validation failed: getSheetId returned non-number:", finalSheetId, "sheet:", activeSheet);
+            return;
+          }
+        } catch (finalError) {
+          console.error("Final sheetId validation failed: cannot get sheet:", activeSheet, finalError);
+          return;
+        }
+      }
+
+      // Store valid numeric ID
+      sheetIdMap.current[activeSheet] = sheetId;
+
+      // Final safety check before using sheetId
+      if (typeof sheetId !== "number") {
+        console.error("Invalid sheetId:", sheetId, "sheet:", activeSheet);
+        return; // prevent HF calls from crashing
+      }
+
+      // 2️⃣ Clear sheet before loading new values
+      hf.clearSheet(sheetId);
+
+      // 3️⃣ Load raw cell values into HyperFormula
+      for (let cellId in raw) {
+        const pos = parseCellId(cellId);
+        if (!pos) continue;
+
+        hf.setCellContents(
+          {
+            sheet: sheetId,
+            row: pos.row,
+            col: pos.col,
+          },
+          raw[cellId]
+        );
+      }
+
+      // 4️⃣ Get computed matrix
+      const matrix = hf.getSheetValues(sheetId);
+
+      // 5️⃣ Convert matrix back into flat state
+      const newState = {};
+
+      for (let r = 0; r < matrix.length; r++) {
+        for (let c = 0; c < matrix[r].length; c++) {
+          const cellId = buildCellId(c + 1, r + 1);
+          let computedValue = matrix[r][c];
+
+          // Handle HyperFormula error objects
+          if (computedValue && typeof computedValue === "object" && !Array.isArray(computedValue)) {
+            // Extract error message or value from error object
+            if (computedValue.value !== undefined) {
+              computedValue = computedValue.value;
+            } else if (computedValue.message !== undefined) {
+              computedValue = computedValue.message;
+            } else if (computedValue.type !== undefined) {
+              computedValue = `#${computedValue.type}`;
+            } else {
+              // Fallback: convert to string representation
+              computedValue = String(computedValue);
+            }
+          }
+
+          newState[cellId] = raw[cellId] ?? "";
+          newState[cellId + "_value"] = computedValue ?? "";
         }
       }
 
@@ -256,21 +386,17 @@ export function GridProvider({ children }) {
     } catch (err) {
       console.error("Error loading cell data:", err);
     }
-  }, [workbookId, activeSheet]);
+  }, [workbookId, activeSheet, setCellValues]);
 
-  // invoke loadData whenever workbookId or activeSheet changes
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // -----------------------------------------------------
-  // 5️⃣ allow external triggers (cells) to request reload
-  // by listening to a custom window event "cell-updated"
-  // (Cells should dispatch window.dispatchEvent(new Event("cell-updated")))
-  // -----------------------------------------------------
+  // ---------------------------------------------
+  // RELOAD AFTER ANY CELL SAVES
+  // ---------------------------------------------
   useEffect(() => {
     function refreshAllCells() {
-      // call latest loadData
       loadData();
     }
 
@@ -278,20 +404,13 @@ export function GridProvider({ children }) {
     return () => window.removeEventListener("cell-updated", refreshAllCells);
   }, [loadData]);
 
-  // -----------------------------------------------------
-  // 6️⃣ Helpers exposed to components
-  // -----------------------------------------------------
-  function getCellDisplayValue(cellId) {
-    const raw = cellValues[cellId];
-    const computed = cellValues[cellId + "_value"];
+  // Note: getCellDisplayValue is now in Zustand store (cellStore.js)
+  // Components should use useCellStore((state) => state.getCellDisplayValue) instead
 
-    if (computed !== undefined) return computed; // formula result
-    if (!raw) return ""; // empty cell
-    if (!raw.startsWith("=")) return raw; // raw text/number
-    return ""; // formula still computing
-  }
-
-  const renameSheet = async (oldName, newName) => {
+  // ---------------------------------------------
+  // SHEET MANAGEMENT HELPERS
+  // ---------------------------------------------
+  const renameSheet = useCallback(async (oldName, newName) => {
     if (!workbookId) return;
 
     try {
@@ -302,9 +421,9 @@ export function GridProvider({ children }) {
     } catch (err) {
       console.error("Rename error:", err);
     }
-  };
+  }, [workbookId]);
 
-  const deleteSheet = async (sheetName) => {
+  const deleteSheet = useCallback(async (sheetName) => {
     if (!workbookId) return;
 
     try {
@@ -314,62 +433,74 @@ export function GridProvider({ children }) {
     } catch (err) {
       console.error("Delete error:", err);
     }
-  };
+  }, [workbookId]);
 
-  const renameWorkbook = async (newName) => {
-  if (!workbookId) return;
+  const renameWorkbook = useCallback(async (newName) => {
+    if (!workbookId) return;
 
-  // 🔥 enforce max length
-  const safeName = newName.slice(0, 300);
+    const safeName = newName.slice(0, 300);
 
-  try {
-    await axios.put(
-      `http://localhost:5001/workbook/${workbookId}/rename`,
-      { name: safeName }
-    );
+    try {
+      await axios.put(
+        `http://localhost:5001/workbook/${workbookId}/rename`,
+        { name: safeName }
+      );
+      setWorkbookName(safeName);
+    } catch (err) {
+      console.error("Workbook rename error:", err);
+    }
+  }, [workbookId]);
 
-    setWorkbookName(safeName);
-  } catch (err) {
-    console.error("Workbook rename error:", err);
-  }
-};
+  // ---------------------------------------------
+  // PROVIDER VALUE - Only lightweight state
+  // ---------------------------------------------
+  const contextValue = useMemo(() => ({
+    selectedCell,
+    setSelectedCell,
 
+    isSidebarOpen,
+    setIsSidebarOpen,
 
-  // -----------------------------------------------------
-  // 7️⃣ PROVIDER VALUES
-  // expose both the raw setter and the wrapper to keep existing callers working
-  // -----------------------------------------------------
+    workbookId,
+    setWorkbookId,
+    updateWorkbookId,
+
+    activeSheet,
+    setActiveSheet,
+
+    workbookName,
+    setWorkbookName,
+    renameWorkbook,
+
+    sheets,
+    setSheets,
+
+    renameSheet,
+    deleteSheet,
+
+    formulaModeCell,
+    setFormulaModeCell,
+    formulaCursor,
+    setFormulaCursor,
+    insertCellReferenceIntoFormula,
+  }), [
+    selectedCell,
+    isSidebarOpen,
+    workbookId,
+    activeSheet,
+    workbookName,
+    sheets,
+    formulaModeCell,
+    formulaCursor,
+    updateWorkbookId,
+    renameWorkbook,
+    renameSheet,
+    deleteSheet,
+    insertCellReferenceIntoFormula,
+  ]);
+
   return (
-    <GridContext.Provider
-      value={{
-        selectedCell,
-        setSelectedCell,
-
-        cellValues,
-        setCellValues,
-        getCellDisplayValue,
-
-        isSidebarOpen,
-        setIsSidebarOpen,
-
-        renameSheet,
-        deleteSheet,
-
-        workbookId,
-
-        // expose both:
-        setWorkbookId, // the real React setter (keeps backward compatibility)
-        updateWorkbookId, // the wrapper that also syncs localStorage
-
-        activeSheet,
-        setActiveSheet,
-        workbookName,
-        setWorkbookName,
-        renameWorkbook,
-        sheets,
-        setSheets,
-      }}
-    >
+    <GridContext.Provider value={contextValue}>
       {children}
     </GridContext.Provider>
   );
