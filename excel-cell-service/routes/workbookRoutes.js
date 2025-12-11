@@ -6,9 +6,8 @@ const {
   addSheet,
   renameSheet,
   deleteSheet,
-  addColumn
+  addColumn,
 } = require("../controllers/sheetController");
-
 
 // ------------------ STATIC ROUTES FIRST ------------------ //
 
@@ -108,7 +107,6 @@ router.get("/init", async (req, res) => {
   }
 });
 
-
 // ------------------ SHEET MODIFICATION ROUTES ------------------ //
 
 router.put("/:workbookId/sheets/rename", renameSheet);
@@ -159,5 +157,18 @@ router.get("/:workbookId", async (req, res) => {
   }
 });
 
+router.delete("/:workbookId", async (req, res) => {
+  try {
+    const { workbookId } = req.params;
+
+    await Workbook.findByIdAndDelete(workbookId);
+    // Or your DB-specific delete logic
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Delete workbook error:", err);
+    res.status(500).json({ error: "Failed to delete workbook" });
+  }
+});
 
 module.exports = router;

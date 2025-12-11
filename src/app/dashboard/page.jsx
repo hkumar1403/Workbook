@@ -7,6 +7,8 @@ import { Plus, FileSpreadsheet } from "lucide-react";
 
 export default function Dashboard() {
   const [workbooks, setWorkbooks] = useState([]);
+  const [openMenuId, setOpenMenuId] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   // Load all workbooks
   useEffect(() => {
@@ -17,11 +19,50 @@ export default function Dashboard() {
     loadWorkbooks();
   }, []);
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (openMenuId === null) return;
+
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.menu-container')) {
+        setOpenMenuId(null);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [openMenuId]);
+
   async function createWorkbook() {
     const name = `Workbook ${workbooks.length + 1}`;
     const res = await axios.post("http://localhost:5001/workbook", { name });
     setWorkbooks([...workbooks, res.data]);
   }
+
+  const toggleMenu = (id) => {
+    setOpenMenuId(prev => prev === id ? null : id);
+  };
+
+  const deleteWorkbook = async (id) => {
+    try {
+      await axios.delete(`http://localhost:5001/workbook/${id}`);
+
+      // Remove from UI
+      setWorkbooks(prev => prev.filter(w => w._id !== id && w.id !== id));
+
+      // If the user deleted the currently active workbook, clear localStorage
+      const current = localStorage.getItem("workbookId");
+      if (current === id) {
+        localStorage.removeItem("workbookId");
+      }
+      
+      // Close menu and confirmation popup after deletion
+      setOpenMenuId(null);
+      setConfirmDeleteId(null);
+    } catch (err) {
+      console.error("Failed to delete workbook:", err);
+    }
+  };
 
   // Format date for display
   function formatDate(dateString) {
@@ -76,23 +117,24 @@ export default function Dashboard() {
               {workbooks.map((wb) => {
                 const displayDate = formatDate(wb.lastOpened || wb.createdAt);
                 return (
-                  <Link key={wb._id} href={`/workbook/${wb._id}`}>
-                    <div className="group relative p-3 bg-white/90 backdrop-blur-sm rounded-xl shadow-md border border-slate-200/70 hover:shadow-2xl hover:shadow-slate-300/40 hover:border-slate-300/90 transition-all duration-300 hover:-translate-y-1.5 cursor-pointer overflow-hidden">
-                      <div className="flex items-start gap-2.5 mb-2.5 relative z-10">
-                        <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center border border-emerald-100/50 group-hover:scale-110 transition-transform duration-300">
-                          <FileSpreadsheet size={16} className="text-emerald-600" />
+                  <div key={wb._id} className="group relative">
+                    <Link href={`/workbook/${wb._id}`}>
+                      <div className="p-3 bg-white/90 backdrop-blur-sm rounded-xl shadow-md border border-slate-200/70 hover:shadow-2xl hover:shadow-slate-300/40 hover:border-slate-300/90 transition-all duration-300 hover:-translate-y-1.5 cursor-pointer overflow-hidden">
+                        <div className="flex items-start gap-2.5 mb-2.5 relative z-10">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center border border-emerald-100/50 group-hover:scale-110 transition-transform duration-300">
+                            <FileSpreadsheet size={16} className="text-emerald-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-sm font-semibold text-slate-900 truncate mb-0.5 group-hover:text-blue-600 transition-colors duration-200">
+                              {wb.name}
+                            </h3>
+                            {displayDate && (
+                              <p className="text-[10px] text-slate-500 font-medium">
+                                {displayDate}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-sm font-semibold text-slate-900 truncate mb-0.5 group-hover:text-blue-600 transition-colors duration-200">
-                            {wb.name}
-                          </h3>
-                          {displayDate && (
-                            <p className="text-[10px] text-slate-500 font-medium">
-                              {displayDate}
-                            </p>
-                          )}
-                        </div>
-                      </div>
                       
                       {/* Grid Preview */}
                       <div className="relative z-10 mt-2.5 pt-2.5 border-t border-slate-100">
@@ -107,16 +149,77 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-                      {/* Subtle hover indicator */}
-                      <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-blue-500/0 to-blue-500/0 group-hover:from-blue-500/5 group-hover:to-transparent transition-all duration-300 pointer-events-none" />
+                        {/* Subtle hover indicator */}
+                        <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-blue-500/0 to-blue-500/0 group-hover:from-blue-500/5 group-hover:to-transparent transition-all duration-300 pointer-events-none" />
+                      </div>
+                    </Link>
+                    
+                    {/* Three-dot menu */}
+                    <div className="absolute top-2 right-2 z-20 menu-container">
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggleMenu(wb._id);
+                        }}
+                        className="p-1.5 rounded-md hover:bg-slate-100 transition-colors text-slate-600 hover:text-slate-900"
+                        aria-label="Menu"
+                      >
+                        <span className="text-lg leading-none">⋮</span>
+                      </button>
+
+                      {openMenuId === wb._id && (
+                        <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 shadow-md rounded-lg p-2 z-50 min-w-[140px]">
+                          <button
+                            className="text-red-600 hover:bg-red-50 px-2 py-1 w-full text-left rounded text-sm font-medium transition-colors"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setConfirmDeleteId(wb._id);
+                              setOpenMenuId(null);
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  </Link>
+                  </div>
                 );
               })}
             </div>
           )}
         </div>
       </div>
+
+      {/* Confirmation Popup */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[9999]" onClick={() => setConfirmDeleteId(null)}>
+          <div className="bg-white p-5 rounded-lg shadow-xl w-80 max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold mb-2 text-gray-800">
+              Delete Workbook?
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Are you sure you want to delete this workbook? This action cannot be undone.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmDeleteId(null)}
+                className="text-gray-700 px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteWorkbook(confirmDeleteId)}
+                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 cursor-pointer transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
