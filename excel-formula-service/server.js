@@ -27,5 +27,5 @@ app.post("/evaluate", (req, res) => {
 const PORT = 5002;
 
 app.listen(PORT, () =>
-  console.log(`📘 Formula service running on port ${PORT}`)
+  console.log(`Formula service running on port ${PORT}`)
 );
