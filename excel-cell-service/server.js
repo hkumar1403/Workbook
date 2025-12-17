@@ -1,12 +1,16 @@
-const express=require('express');
-const cors=require('cors');
-const mongoose=require('mongoose');
+const express = require("express");
+const cors = require("cors");
+const mongoose = require("mongoose");
 require("dotenv").config();
 
 const cellRoutes = require("./routes/cellRoutes");
 const workbookRoutes = require("./routes/workbookRoutes");
 const app = express();
 
+app.use((req, res, next) => {
+  console.log("Incoming request:", req.method, req.url);
+  next();
+});
 // ✅ Allow frontend requests
 app.use(cors({ origin: "http://localhost:3000" }));
 
@@ -15,6 +19,10 @@ app.use(express.json());
 // Routes - order matters!
 app.use("/cells", cellRoutes);
 app.use("/workbook", workbookRoutes);
+
+app.get("/", (req, res) => {
+  res.send("API is running 🚀");
+});
 
 // 404 handler for unmatched routes (must be after all routes)
 app.use((req, res) => {
@@ -39,9 +47,9 @@ async function startServer() {
       await mongoose.connect(process.env.MONGO_URI);
       console.log("MongoDB connected!");
     }
-
-    app.listen(5001, () => {
-      console.log("Cell service running on port 5001");
+    const PORT = process.env.PORT || 5004;
+    app.listen(PORT, () => {
+      console.log(`Cell service running on port ${PORT}`);
     });
   } catch (err) {
     console.error("Failed to start server:", err);

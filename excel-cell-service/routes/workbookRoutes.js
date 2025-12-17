@@ -13,6 +13,8 @@ const {
 
 // CREATE a new workbook
 router.post("/", async (req, res) => {
+  console.log("Workbook routes loaded");
+
   try {
     const name = req.body.name || "New Workbook";
 
