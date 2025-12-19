@@ -59,7 +59,7 @@ export default function Grid() {
     if (!memoizedWorkbookId || !memoizedActiveSheet) return;
 
     axios
-      .get(`http://localhost:5001/workbook/${memoizedWorkbookId}/sheets`)
+      .get(`https://workbook-gc93.onrender.com/workbook/${memoizedWorkbookId}/sheets`)
       .then((res) => {
         const sheet = res.data.find((s) => s.name === memoizedActiveSheet);
         if (sheet) setColumnLabels(sheet.columnLabels);
@@ -112,7 +112,7 @@ export default function Grid() {
     if (!memoizedWorkbookId || !memoizedActiveSheet) return;
     
     const res = await axios.post(
-      `http://localhost:5001/workbook/${memoizedWorkbookId}/sheets/${memoizedActiveSheet}/columns`,
+      `https://workbook-gc93.onrender.com/workbook/${memoizedWorkbookId}/sheets/${memoizedActiveSheet}/columns`,
       { index, direction: "left" }
     );
 
@@ -129,7 +129,7 @@ export default function Grid() {
     if (!memoizedWorkbookId || !memoizedActiveSheet) return;
     
     const res = await axios.post(
-      `http://localhost:5001/workbook/${memoizedWorkbookId}/sheets/${memoizedActiveSheet}/columns`,
+      `https://workbook-gc93.onrender.com/workbook/${memoizedWorkbookId}/sheets/${memoizedActiveSheet}/columns`,
       { index, direction: "right" }
     );
 

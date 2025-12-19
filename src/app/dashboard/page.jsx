@@ -13,7 +13,7 @@ export default function Dashboard() {
   // Load all workbooks
   useEffect(() => {
     async function loadWorkbooks() {
-      const res = await axios.get("http://localhost:5001/workbook");
+      const res = await axios.get("https://workbook-gc93.onrender.com/workbook");
       setWorkbooks(res.data);
     }
     loadWorkbooks();
@@ -35,7 +35,7 @@ export default function Dashboard() {
 
   async function createWorkbook() {
     const name = `Workbook ${workbooks.length + 1}`;
-    const res = await axios.post("http://localhost:5001/workbook", { name });
+    const res = await axios.post("https://workbook-gc93.onrender.com/workbook", { name });
     setWorkbooks([...workbooks, res.data]);
   }
 
@@ -45,7 +45,7 @@ export default function Dashboard() {
 
   const deleteWorkbook = async (id) => {
     try {
-      await axios.delete(`http://localhost:5001/workbook/${id}`);
+      await axios.delete(`https://workbook-gc93.onrender.com/workbook/${id}`);
 
       // Remove from UI
       setWorkbooks(prev => prev.filter(w => w._id !== id && w.id !== id));

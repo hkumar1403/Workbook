@@ -29,12 +29,12 @@ function SheetTabs({ onSheetChange }) {
     const newName = `Sheet${sheets.length + 1}`;
     console.log(
       "Calling:",
-      `http://localhost:5001/workbook/${workbookId}/sheets`
+      `https://workbook-gc93.onrender.com/workbook/${workbookId}/sheets`
     );
 
     // Save to backend
     const res = await axios.post(
-      `http://localhost:5001/workbook/${workbookId}/sheets`,
+      `https://workbook-gc93.onrender.com/workbook/${workbookId}/sheets`,
       { sheetName: newName }
     );
 
@@ -85,7 +85,7 @@ function SheetTabs({ onSheetChange }) {
 
     try {
       const res = await axios.put(
-        `http://localhost:5001/workbook/${workbookId}/sheets/rename`,
+        `https://workbook-gc93.onrender.com/workbook/${workbookId}/sheets/rename`,
         { oldName, newName }
       );
 
@@ -115,7 +115,7 @@ function SheetTabs({ onSheetChange }) {
 
     try {
       const res = await axios.delete(
-        `http://localhost:5001/workbook/${workbookId}/sheets/${confirmDelete}`
+        `https://workbook-gc93.onrender.com/workbook/${workbookId}/sheets/${confirmDelete}`
       );
 
       const updated = res.data; // backend returns updated sheet list

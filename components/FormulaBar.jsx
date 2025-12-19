@@ -72,7 +72,7 @@ function FormulaBar() {
       }
 
       await axios.post(
-        `http://localhost:5001/cells/${workbookId}/${activeSheet}/${selectedCell}`,
+        `https://workbook-gc93.onrender.com/cells/${workbookId}/${activeSheet}/${selectedCell}`,
         {
           rawValue: raw,
         }

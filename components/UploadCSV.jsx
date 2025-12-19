@@ -25,7 +25,7 @@ export default function UploadCSV() {
         try {
           // Save to backend
           await axios.post(
-            `http://localhost:5001/workbook/${workbookId}/sheets/${activeSheet}/import`,
+            `https://workbook-gc93.onrender.com/workbook/${workbookId}/sheets/${activeSheet}/import`,
             { cells: parsedCells }
           );
 

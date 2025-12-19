@@ -127,10 +127,10 @@ export function GridProvider({ children }) {
         if (stored) {
           try {
             await axios.get(
-              `http://localhost:5001/workbook/${stored}/sheets`
+              `https://workbook-gc93.onrender.com/workbook/${stored}/sheets`
             );
             const wbRes = await axios.get(
-              `http://localhost:5001/workbook/${stored}`
+              `https://workbook-gc93.onrender.com/workbook/${stored}`
             );
 
             setWorkbookName(wbRes.data.name);
@@ -140,7 +140,7 @@ export function GridProvider({ children }) {
           } catch {
             localStorage.removeItem("workbookId");
 
-            const res = await axios.get("http://localhost:5001/workbook/init");
+            const res = await axios.get("https://workbook-gc93.onrender.com/workbook/init");
             const newId = res.data.workbookId;
 
             localStorage.setItem("workbookId", newId);
@@ -151,7 +151,7 @@ export function GridProvider({ children }) {
           }
         }
 
-        const res = await axios.get("http://localhost:5001/workbook/init");
+        const res = await axios.get("https://workbook-gc93.onrender.com/workbook/init");
         const newId = res.data.workbookId;
 
         if (newId) {
@@ -177,7 +177,7 @@ export function GridProvider({ children }) {
     async function loadName() {
       try {
         const res = await axios.get(
-          `http://localhost:5001/workbook/${workbookId}`
+          `https://workbook-gc93.onrender.com/workbook/${workbookId}`
         );
         setWorkbookName(res.data.name);
       } catch (err) {
@@ -199,7 +199,7 @@ export function GridProvider({ children }) {
     async function loadSheets() {
       try {
         const res = await axios.get(
-          `http://localhost:5001/workbook/${workbookId}/sheets`
+          `https://workbook-gc93.onrender.com/workbook/${workbookId}/sheets`
         );
 
         const names = Array.isArray(res.data)
@@ -260,7 +260,7 @@ export function GridProvider({ children }) {
 
     try {
       const res = await axios.get(
-        `http://localhost:5001/cells/${workbookId}?sheet=${encodeURIComponent(
+        `https://workbook-gc93.onrender.com/cells/${workbookId}?sheet=${encodeURIComponent(
           activeSheet
         )}`
       );
@@ -415,7 +415,7 @@ export function GridProvider({ children }) {
 
     try {
       await axios.put(
-        `http://localhost:5001/workbook/${workbookId}/sheets/rename`,
+        `https://workbook-gc93.onrender.com/workbook/${workbookId}/sheets/rename`,
         { oldName, newName }
       );
     } catch (err) {
@@ -428,7 +428,7 @@ export function GridProvider({ children }) {
 
     try {
       await axios.delete(
-        `http://localhost:5001/workbook/${workbookId}/sheets/${sheetName}`
+        `https://workbook-gc93.onrender.com/workbook/${workbookId}/sheets/${sheetName}`
       );
     } catch (err) {
       console.error("Delete error:", err);
@@ -442,7 +442,7 @@ export function GridProvider({ children }) {
 
     try {
       await axios.put(
-        `http://localhost:5001/workbook/${workbookId}/rename`,
+        `https://workbook-gc93.onrender.com/workbook/${workbookId}/rename`,
         { name: safeName }
       );
       setWorkbookName(safeName);

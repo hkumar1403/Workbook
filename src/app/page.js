@@ -10,7 +10,7 @@ export default function Page() {
   useEffect(() => {
     async function redirectToLastWorkbook() {
       try {
-        const res = await axios.get("http://localhost:5001/workbook/init");
+        const res = await axios.get("https://workbook-gc93.onrender.com/workbook/init");
         const workbookId = res.data.workbookId;
         if (workbookId) {
           router.push(`/workbook/${workbookId}`);
