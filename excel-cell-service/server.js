@@ -14,11 +14,20 @@ app.use((req, res, next) => {
 // ✅ Allow frontend requests
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "https://workbook-omega.vercel.app"
-    ],
-    credentials: true
+    origin: (origin, callback) => {
+      // allow server-to-server & tools like curl/postman
+      if (!origin) return callback(null, true);
+
+      if (
+        origin === "http://localhost:3000" ||
+        origin.endsWith(".vercel.app")
+      ) {
+        return callback(null, true);
+      }
+
+      callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
   })
 );
 
