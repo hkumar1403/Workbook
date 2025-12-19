@@ -12,7 +12,16 @@ app.use((req, res, next) => {
   next();
 });
 // ✅ Allow frontend requests
-app.use(cors({ origin: "http://localhost:3000" }));
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "https://workbook-omega.vercel.app"
+    ],
+    credentials: true
+  })
+);
+
 
 app.use(express.json());
 

@@ -5,14 +5,19 @@ const evaluateFormula = require("./evaluateFormula");
 const app = express();
 
 // Allow requests from your Next.js frontend
-app.use(cors({ origin: "http://localhost:3000" }));
+app.use(
+  cors({
+    origin: ["http://localhost:3000", "https://workbook-omega.vercel.app"],
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
 // MAIN API ENDPOINT
 
 app.post("/evaluate", (req, res) => {
   try {
-    
     const { cellId, rawValue, allCells } = req.body;
     const upperCasedFormula = rawValue;
     const result = evaluateFormula(upperCasedFormula, allCells);
@@ -26,6 +31,4 @@ app.post("/evaluate", (req, res) => {
 
 const PORT = 5002;
 
-app.listen(PORT, () =>
-  console.log(`Formula service running on port ${PORT}`)
-);
+app.listen(PORT, () => console.log(`Formula service running on port ${PORT}`));
